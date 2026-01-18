@@ -1,20 +1,17 @@
 import sqlite3
 import datetime
-import voluptuous as vol
+import os
 from datetime import timedelta
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.components.persistent_notification import async_create
-from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY
-
-SERVICE_OVERRIDE_SCHEMA = vol.Schema({
-    vol.Required("entry_id"): cv.string,
-    vol.Required("date"): cv.date,
-    vol.Required("value"): vol.Coerce(float),
-})
+from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, CONF_FRIENDLY_NAME
 
 async def async_setup_entry(hass, entry):
-    db_path = hass.config.path(f"custom_components/{DOMAIN}/tracker_{entry.entry_id}.db")
+    db_dir = hass.config.path(f"custom_components/{DOMAIN}")
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+        
+    db_path = os.path.join(db_dir, f"tracker_{entry.entry_id}.db")
     source_sensor = entry.data[CONF_SOURCE_SENSOR]
     interval = entry.data[CONF_UPDATE_INTERVAL]
     friendly_name = entry.data[CONF_FRIENDLY_NAME]
@@ -43,12 +40,12 @@ async def async_setup_entry(hass, entry):
 
     async def update_data(now=None):
         state = hass.states.get(source_sensor)
-        if not state or state.state in ["unknown", "unavailable"]:
+        if not state or state.state in ["unknown", "unavailable", "none"]:
             val = 0.0
-            async_create(hass, title="Lỗi Sensor", message=f"Sensor `{source_sensor}` lỗi. Ghi nhận là 0.", notification_id=f"error_{entry.entry_id}")
+            async_create(hass, title="Lỗi Sensor", message=f"Sensor `{source_sensor}` lỗi. Ghi nhận là 0.", notification_id=f"err_{entry.entry_id}")
         else:
             try: val = float(state.state)
-            except ValueError: val = 0.0
+            except: val = 0.0
 
         dt = datetime.datetime.now()
         def db_work():
@@ -66,3 +63,6 @@ async def async_setup_entry(hass, entry):
     entry.async_on_unload(async_track_time_interval(hass, update_data, timedelta(hours=interval)))
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
+
+async def async_unload_entry(hass, entry):
+    return await hass.config_entries.async_unload_platforms(entry, ["sensor"])
