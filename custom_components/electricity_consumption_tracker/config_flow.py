@@ -8,6 +8,7 @@ class ConsumptionTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
+        """Bước thiết lập ban đầu qua giao diện UI."""
         if user_input is not None:
             return self.async_create_entry(title=user_input[CONF_FRIENDLY_NAME], data=user_input)
 
@@ -27,6 +28,7 @@ class ConsumptionTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
+        """Kích hoạt giao diện thay đổi tùy chọn (Configure)."""
         return ConsumptionTrackerOptionsFlowHandler(config_entry)
 
 class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
@@ -34,9 +36,11 @@ class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
         self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
+        """Giao diện sửa đổi thời gian cập nhật."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        # Lấy giá trị hiện tại từ options hoặc data gốc
         current_interval = self.config_entry.options.get(
             CONF_UPDATE_INTERVAL, 
             self.config_entry.data.get(CONF_UPDATE_INTERVAL, 1)
