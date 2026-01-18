@@ -19,30 +19,23 @@ async def async_setup_entry(hass, entry):
     if not os.path.exists(db_dir): os.makedirs(db_dir)
     db_path = os.path.join(db_dir, f"tracker_{entry.entry_id}.db")
     
-    friendly_name = entry.data[CONF_FRIENDLY_NAME]
     interval = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, 1))
 
-    # Đăng ký Device Registry với tên đầy đủ
-    device_registry = dr.async_get(hass)
-    device_registry.async_get_or_create(
+    # Khởi tạo Device Registry
+    dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
-        name=friendly_name, 
+        name=entry.data[CONF_FRIENDLY_NAME],
         model="Electricity Tracker V1",
         sw_version="2026.01.18",
     )
 
     def init_db():
-        """Tạo cấu trúc database chuẩn 3 bảng."""
+        """Tạo cấu trúc 3 bảng giống hệt file .db đính kèm."""
         conn = sqlite3.connect(db_path)
-        conn.execute("""CREATE TABLE IF NOT EXISTS daily_usage (
-            nam INTEGER, thang INTEGER, ngay INTEGER, san_luong REAL, don_vi TEXT, 
-            PRIMARY KEY (nam, thang, ngay))""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS monthly_bill (
-            nam INTEGER, thang INTEGER, tong_san_luong REAL, don_vi_san_luong TEXT, 
-            thanh_tien REAL, don_vi_tien TEXT, PRIMARY KEY (nam, thang))""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS total_usage (
-            tong_san_luong REAL, don_vi TEXT, tong_so_thang INTEGER)""")
+        conn.execute("CREATE TABLE IF NOT EXISTS daily_usage (nam INTEGER, thang INTEGER, ngay INTEGER, san_luong REAL, don_vi TEXT, PRIMARY KEY (nam, thang, ngay))")
+        conn.execute("CREATE TABLE IF NOT EXISTS monthly_bill (nam INTEGER, thang INTEGER, tong_san_luong REAL, don_vi_san_luong TEXT, thanh_tien REAL, don_vi_tien TEXT, PRIMARY KEY (nam, thang))")
+        conn.execute("CREATE TABLE IF NOT EXISTS total_usage (tong_san_luong REAL, don_vi TEXT, tong_so_thang INTEGER)")
         conn.commit()
         conn.close()
 
@@ -63,7 +56,7 @@ async def async_setup_entry(hass, entry):
         state = hass.states.get(source)
         val = 0.0
         if not state or state.state in ["unknown", "unavailable"]:
-            async_create(hass, title="Lỗi Sensor", message=f"Sensor `{source}` lỗi. Tự gán = 0.", notification_id=f"err_{entry.entry_id}")
+            async_create(hass, title="Lỗi Sensor", message=f"Sensor `{source}` không có dữ liệu.", notification_id=f"err_{entry.entry_id}")
         else:
             try: val = float(state.state)
             except: val = 0.0
@@ -75,18 +68,15 @@ async def async_setup_entry(hass, entry):
             m_usage = conn.execute("SELECT SUM(san_luong) FROM daily_usage WHERE nam=? AND thang=?", (dt.year, dt.month)).fetchone()[0] or 0
             m_cost = calculate_cost(m_usage, dt.year, dt.month)
             conn.execute("INSERT OR REPLACE INTO monthly_bill VALUES (?, ?, ?, 'kWh', ?, 'đ')", (dt.year, dt.month, m_usage, m_cost))
-            
-            # Cập nhật bảng tổng [cite: 34]
             t_usage = conn.execute("SELECT SUM(tong_san_luong) FROM monthly_bill").fetchone()[0] or 0
             t_months = conn.execute("SELECT COUNT(*) FROM monthly_bill").fetchone()[0] or 0
             conn.execute("DELETE FROM total_usage")
             conn.execute("INSERT INTO total_usage VALUES (?, 'kWh', ?)", (t_usage, t_months))
-            conn.commit()
-            conn.close()
+            conn.commit(); conn.close()
+        
         await hass.async_add_executor_job(db_work)
         await hass.config_entries.async_reload(entry.entry_id)
 
-    # Đăng ký Service nạp dữ liệu thủ công
     async def handle_override(call):
         if call.data.get("entry_id") != entry.entry_id: return
         raw_dt, v = call.data.get("date"), call.data.get("value")
@@ -97,8 +87,7 @@ async def async_setup_entry(hass, entry):
             m_usage = conn.execute("SELECT SUM(san_luong) FROM daily_usage WHERE nam=? AND thang=?", (d.year, d.month)).fetchone()[0] or 0
             m_cost = calculate_cost(m_usage, d.year, d.month)
             conn.execute("INSERT OR REPLACE INTO monthly_bill VALUES (?, ?, ?, 'kWh', ?, 'đ')", (d.year, d.month, m_usage, m_cost))
-            conn.commit()
-            conn.close()
+            conn.commit(); conn.close()
         await hass.async_add_executor_job(db_override)
         await hass.config_entries.async_reload(entry.entry_id)
 
