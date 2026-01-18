@@ -3,6 +3,19 @@
 Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản lý, lưu trữ và tính toán tiền điện lũy tiến Việt Nam cho nhiều thiết bị hoặc công tơ điện độc lập cùng lúc.
 
 
+## Cài đặt
+
+
+1. Nhấn nút bên dưới để thêm vào HACS trên Home Assistant.
+
+   [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khaisilk1910&repository=electricity_consumption_tracker&category=integration)
+
+   - Sau khi thêm trong HACS và khởi động lại Home Assistant
+     
+   - Vào Settings -> Integrations -> Add integration nhập `Electricity Consumption Tracker` để thêm
+  
+     <img width="633" height="810" alt="image" src="https://github.com/user-attachments/assets/6d1baaaf-444f-4405-8559-1a78cccfb672" />
+
 
 ## ✨ Tính năng nổi bật
 
