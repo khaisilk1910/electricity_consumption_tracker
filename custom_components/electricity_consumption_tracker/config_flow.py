@@ -37,15 +37,14 @@ class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        current_interval = self.config_entry.options.get(
-            CONF_UPDATE_INTERVAL, 
-            self.config_entry.data.get(CONF_UPDATE_INTERVAL, 1)
+        current_val = self.config_entry.options.get(
+            CONF_UPDATE_INTERVAL, self.config_entry.data.get(CONF_UPDATE_INTERVAL, 1)
         )
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required(CONF_UPDATE_INTERVAL, default=current_interval): selector.NumberSelector(
+                vol.Required(CONF_UPDATE_INTERVAL, default=current_val): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=1, max=24, step=1, unit_of_measurement="giờ")
                 ),
             })
