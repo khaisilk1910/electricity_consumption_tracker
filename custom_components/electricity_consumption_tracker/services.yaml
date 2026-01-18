@@ -1,0 +1,15 @@
+override_data:
+  name: "Ghi đè dữ liệu"
+  description: "Ghi đè hoặc thêm sản lượng điện của một ngày cụ thể."
+  fields:
+    entry_id:
+      name: "Entry ID"
+      description: "ID của thực thể tích hợp. Nhập đúng ID của sensor đã tạo để thêm hoặc chèn dữ liệu mới"
+      required: true
+    date:
+      name: "Ngày"
+      description: "Định dạng YYYY-MM-DD. Nhập đúng định dạnh Năm-Tháng-Ngày."
+      required: true
+    value:
+      name: "Giá trị kWh"
+      required: true
