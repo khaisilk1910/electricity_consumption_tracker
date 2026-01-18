@@ -17,10 +17,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class ConsumptionBase(SensorEntity):
     def __init__(self, db_path, name, entry_id):
-        self._db_path = db_path
-        self._attr_name = name
-        self._entry_id = entry_id
-        # Liên kết với Thiết bị để gom nhóm
+        self._db_path, self._attr_name = db_path, name
         self._attr_device_info = {"identifiers": {(DOMAIN, entry_id)}}
 
 class ConsumptionMonthlySensor(ConsumptionBase):
@@ -39,7 +36,6 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             conn.close()
             return res, daily
         res, daily = await self.hass.async_add_executor_job(fetch)
-        # Sửa lỗi: Hiển thị 0 thay vì Unknown khi database mới tạo
         self._attr_native_value = int(res[0]) if res else 0
         self._attr_extra_state_attributes = {
             "tong_san_luong_kwh": round(res[1], 2) if res else 0,
@@ -49,8 +45,7 @@ class ConsumptionMonthlySensor(ConsumptionBase):
 class ConsumptionYearlySensor(ConsumptionBase):
     def __init__(self, db_path, name, year, entry_id):
         super().__init__(db_path, name, entry_id)
-        self._year = year
-        self._attr_unique_id = f"cons_{entry_id}_yearly"
+        self._year, self._attr_unique_id = year, f"cons_{entry_id}_yearly"
         self._attr_native_unit_of_measurement = "đ"
 
     async def async_update(self):
@@ -65,14 +60,13 @@ class ConsumptionYearlySensor(ConsumptionBase):
 class ConsumptionTotalSensor(ConsumptionBase):
     def __init__(self, db_path, name, entry_id):
         super().__init__(db_path, name, entry_id)
-        self._attr_unique_id = f"cons_{entry_id}_total"
-        self._attr_native_unit_of_measurement = "kWh"
+        self._attr_unique_id, self._attr_native_unit_of_measurement = f"cons_{entry_id}_total", "kWh"
 
     async def async_update(self):
         def fetch():
             if not os.path.exists(self._db_path): return 0
             conn = sqlite3.connect(self._db_path)
-            res = conn.execute("SELECT SUM(tong_san_luong) FROM monthly_bill").fetchone()
+            res = conn.execute("SELECT tong_san_luong FROM total_usage").fetchone()
             conn.close()
             return round(res[0], 2) if res and res[0] else 0
         self._attr_native_value = await self.hass.async_add_executor_job(fetch)
