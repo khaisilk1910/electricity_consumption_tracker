@@ -9,7 +9,7 @@ import homeassistant.util.dt as dt_util
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_time_interval, async_track_time_change # [NEW] Import thêm track_time_change
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, CONF_FRIENDLY_NAME, SIGNAL_UPDATE_SENSORS
@@ -169,6 +169,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             conn.close()
 
         await hass.async_add_executor_job(db_work_update)
+        # Sau khi update DB, bắn tín hiệu để UI cập nhật ngay (cho chắc chắn vào cuối ngày)
+        async_dispatcher_send(hass, f"{SIGNAL_UPDATE_SENSORS}_{entry.entry_id}")
 
     # Service: Override Data
     async def handle_override(call: ServiceCall):
@@ -223,12 +225,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(DOMAIN, "override_data", handle_override, schema=SERVICE_OVERRIDE_SCHEMA)
 
+    # 1. Update định kỳ (cấu hình trong options)
     update_interval_hours = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, 1))
     entry.async_on_unload(async_track_time_interval(hass, update_data, timedelta(hours=update_interval_hours)))
     
+    # 2. [QUAN TRỌNG] Update chốt sổ cuối ngày vào lúc 23:59:55
+    # Giúp lấy trọn vẹn số liệu trước khi sensor nguồn bị reset vào 00:00:00
+    entry.async_on_unload(async_track_time_change(hass, update_data, hour=23, minute=59, second=55))
+
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    # Chạy update ngay lập tức để lấy dữ liệu sensor hiện tại
+    # 3. Update ngay khi khởi động để sensor có dữ liệu hiển thị liền
     await update_data()
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
