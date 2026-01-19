@@ -8,56 +8,46 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback # [NEW] Import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect # [NEW] Import dispatcher connect
-from .const import DOMAIN, SIGNAL_UPDATE_SENSORS # [NEW] Import signal
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from .const import DOMAIN, SIGNAL_UPDATE_SENSORS, VAT_RATE # [NEW] Import VAT_RATE
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
     """Set up the sensor platform."""
-    # Lấy đường dẫn DB và Tên hiển thị từ cấu hình
     db_path = hass.data[DOMAIN][entry.entry_id]["db_path"]
     friendly_name = entry.data.get("friendly_name", "Electricity")
     
     entities = []
     
-    # 1. Luôn tạo Sensor Tổng (All Time)
+    # 1. Luôn tạo Sensor Tổng
     entities.append(ConsumptionTotalSensor(db_path, f"{friendly_name} Total All Time", entry.entry_id))
 
-    # 2. Quét Database để tìm lịch sử (Auto-Discovery)
+    # 2. Quét Database (Auto-Discovery)
     if os.path.exists(db_path):
         def scan_database():
-            """Hàm chạy trong luồng riêng để quét DB."""
             found_years = []
             found_months = []
             try:
                 conn = sqlite3.connect(db_path)
                 cursor = conn.cursor()
-                
-                # Tìm tất cả các năm có dữ liệu
                 cursor.execute("SELECT DISTINCT nam FROM monthly_bill ORDER BY nam DESC")
                 found_years = [r[0] for r in cursor.fetchall()]
-                
-                # Tìm tất cả các cặp (năm, tháng) có dữ liệu
                 cursor.execute("SELECT nam, thang FROM monthly_bill ORDER BY nam DESC, thang DESC")
                 found_months = cursor.fetchall()
-                
                 conn.close()
             except Exception as e:
                 _LOGGER.error(f"Lỗi khi quét database {db_path}: {e}")
             return found_years, found_months
 
-        # Chạy hàm quét
         years, months = await hass.async_add_executor_job(scan_database)
         
-        # 3. Tạo Sensor Năm (Dynamic Year)
         for year in years:
             name = f"{friendly_name} - Năm {year}"
             entities.append(ConsumptionYearlySensor(db_path, name, year, entry.entry_id))
 
-        # 4. Tạo Sensor Tháng (Dynamic Month)
         for year, month in months:
             name = f"{friendly_name} - Tháng {month}/{year}"
             entities.append(ConsumptionMonthlySensor(db_path, name, year, month, entry.entry_id))
@@ -74,13 +64,12 @@ class ConsumptionBase(SensorEntity):
         self._attr_has_entity_name = False 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry_id)},
-            "name": entry_id, # Link vào device gốc
+            "name": entry_id, 
         }
 
     async def async_added_to_hass(self):
-        """Đăng ký lắng nghe sự kiện update khi entity được thêm vào HA."""
+        """Đăng ký lắng nghe sự kiện update."""
         await super().async_added_to_hass()
-        # [NEW] Lắng nghe tín hiệu cập nhật
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
@@ -91,11 +80,11 @@ class ConsumptionBase(SensorEntity):
 
     @callback
     def _force_update_callback(self):
-        """[NEW] Callback ép buộc cập nhật lại state."""
+        """Ép buộc cập nhật lại state."""
         self.async_schedule_update_ha_state(True)
 
 class ConsumptionMonthlySensor(ConsumptionBase):
-    """Sensor hiển thị chi tiết Tháng (có attribute chi_tiet_ngay)."""
+    """Sensor hiển thị chi tiết Tháng."""
     
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
@@ -123,9 +112,16 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             conn.close()
 
             if res:
-                self._attr_native_value = int(res[0])
+                pre_tax = int(res[0])
+                # [UPDATE] Tính thuế VAT 8%
+                post_tax = int(pre_tax * (1 + VAT_RATE))
+                
+                self._attr_native_value = pre_tax
                 self._attr_extra_state_attributes = {
                     "tong_san_luong_kwh": round(res[1], 2),
+                    "tong_tien_truoc_thue": pre_tax,
+                    "tong_tien_sau_thue": post_tax, # [NEW] Attribute mới
+                    "vat_rate": f"{int(VAT_RATE*100)}%",
                     "chi_tiet_ngay": {f"Ngay_{r[0]}": round(r[1], 2) for r in daily_rows},
                     "data_source": "Monthly Detail Auto Gen"
                 }
@@ -135,7 +131,7 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             _LOGGER.error(f"Update error month {self._month}/{self._year}: {e}")
 
 class ConsumptionYearlySensor(ConsumptionBase):
-    """Sensor hiển thị chi tiết Năm (có attribute chi_tiet_cac_thang)."""
+    """Sensor hiển thị chi tiết Năm."""
     
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
@@ -162,13 +158,21 @@ class ConsumptionYearlySensor(ConsumptionBase):
             conn.close()
             
             if res and res[0] is not None:
-                self._attr_native_value = int(res[0])
+                pre_tax = int(res[0])
+                # [UPDATE] Tính thuế VAT 8%
+                post_tax = int(pre_tax * (1 + VAT_RATE))
+                
+                self._attr_native_value = pre_tax
                 self._attr_extra_state_attributes = {
                     "tong_san_luong_nam": round(res[1], 2),
+                    "tong_tien_truoc_thue": pre_tax,
+                    "tong_tien_sau_thue": post_tax, # [NEW] Attribute mới
+                    "vat_rate": f"{int(VAT_RATE*100)}%",
                     "chi_tiet_cac_thang": {
                         f"Thang_{r[0]}": {
                             "san_luong_kwh": round(r[1], 2),
-                            "thanh_tien_vnd": int(r[2])
+                            "thanh_tien_vnd": int(r[2]),
+                            "thanh_tien_sau_thue_vnd": int(r[2] * (1 + VAT_RATE)) # [NEW] Thêm vào chi tiết tháng
                         } for r in month_rows
                     },
                     "data_source": "Auto Generated"
@@ -207,14 +211,19 @@ class ConsumptionTotalSensor(ConsumptionBase):
             if res:
                 self._attr_native_value = round(res[0], 2)
                 grand_total_money = sum([y[2] for y in years_stats]) if years_stats else 0
-                
+                # [UPDATE] Tính thuế
+                grand_total_post_tax = int(grand_total_money * (1 + VAT_RATE))
+
                 self._attr_extra_state_attributes = {
                     "tong_so_thang_du_lieu": res[1],
                     "tong_tien_tich_luy": int(grand_total_money),
+                    "tong_tien_tich_luy_sau_thue": grand_total_post_tax, # [NEW] Attribute mới
+                    "vat_rate": f"{int(VAT_RATE*100)}%",
                     "chi_tiet_tung_nam": {
                         f"Nam_{y[0]}": {
                             "tong_san_luong_kwh": round(y[1], 2),
-                            "tong_tien_vnd": int(y[2])
+                            "tong_tien_vnd": int(y[2]),
+                            "tong_tien_sau_thue_vnd": int(y[2] * (1 + VAT_RATE)) # [NEW] Thêm vào chi tiết năm
                         } for y in years_stats
                     }
                 }
