@@ -52,13 +52,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         
         # 3. Tạo Sensor Năm (Dynamic Year)
         for year in years:
-            # Tên sensor giống file cũ: "Dữ liệu điện Năm 2025"
+            # Tên sensor: "Dữ liệu điện Năm 2025"
             name = f"Dữ liệu điện Năm {year}"
             entities.append(ConsumptionYearlySensor(db_path, name, year, entry.entry_id))
 
         # 4. Tạo Sensor Tháng (Dynamic Month)
         for year, month in months:
-            # Tên sensor giống file cũ: "Tiền điện Tháng 9/2025"
+            # Tên sensor: "Tiền điện Tháng 9/2025"
             name = f"Tiền điện Tháng {month}/{year}"
             entities.append(ConsumptionMonthlySensor(db_path, name, year, month, entry.entry_id))
     
@@ -112,7 +112,7 @@ class ConsumptionMonthlySensor(ConsumptionBase):
                 self._attr_native_value = int(res[0])
                 self._attr_extra_state_attributes = {
                     "tong_san_luong_kwh": round(res[1], 2),
-                    # Attribute giống hệt file cũ
+                    
                     "chi_tiet_ngay": {f"Ngay_{r[0]}": round(r[1], 2) for r in daily_rows},
                     "data_source": "Monthly Detail Auto Gen"
                 }
@@ -154,7 +154,7 @@ class ConsumptionYearlySensor(ConsumptionBase):
                 self._attr_native_value = int(res[0])
                 self._attr_extra_state_attributes = {
                     "tong_san_luong_nam": round(res[1], 2),
-                    # Attribute giống hệt file cũ
+                    # Attribute
                     "chi_tiet_cac_thang": {
                         f"Thang_{r[0]}": {
                             "san_luong_kwh": round(r[1], 2),
