@@ -13,16 +13,23 @@ class ConsumptionTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             return self.async_create_entry(title=user_input[CONF_FRIENDLY_NAME], data=user_input)
 
+        # Sử dụng cấu hình dạng Dictionary thay vì Class Object để tránh lỗi phiên bản
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required(CONF_FRIENDLY_NAME, default="Electricity Home"): str,
-                vol.Required(CONF_SOURCE_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor") # Cho phép chọn nhiều loại sensor hơn
-                ),
-                vol.Required(CONF_UPDATE_INTERVAL, default=1): selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=1, max=24, step=1, unit_of_measurement="giờ")
-                ),
+                # Fix: Dùng dictionary cho EntitySelector
+                vol.Required(CONF_SOURCE_SENSOR): selector.EntitySelector({
+                    "domain": "sensor"
+                }),
+                # Fix: Dùng dictionary cho NumberSelector
+                vol.Required(CONF_UPDATE_INTERVAL, default=1): selector.NumberSelector({
+                    "min": 1,
+                    "max": 24,
+                    "step": 1,
+                    "unit_of_measurement": "giờ",
+                    "mode": "box"
+                }),
             }),
             errors=errors
         )
@@ -47,8 +54,12 @@ class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required(CONF_UPDATE_INTERVAL, default=current_val): selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=1, max=24, step=1, unit_of_measurement="giờ")
-                ),
+                vol.Required(CONF_UPDATE_INTERVAL, default=current_val): selector.NumberSelector({
+                    "min": 1,
+                    "max": 24,
+                    "step": 1,
+                    "unit_of_measurement": "giờ",
+                    "mode": "box"
+                }),
             })
         )
