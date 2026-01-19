@@ -10,7 +10,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.components.persistent_notification import async_create
 
 from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, CONF_FRIENDLY_NAME
 
@@ -18,30 +17,38 @@ _LOGGER = logging.getLogger(__name__)
 
 SERVICE_OVERRIDE_SCHEMA = vol.Schema({
     vol.Required("entry_id"): cv.string,
-    vol.Required("date"): vol.Any(cv.date, cv.datetime), 
+    vol.Required("date"): vol.Any(cv.date, cv.datetime),
     vol.Required("value"): vol.Coerce(float),
 })
-# ---------------------------
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the Electricity Consumption Tracker component."""
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Electricity Consumption Tracker from a config entry."""
     
-    # 1. Setup Database Path
-    db_dir = hass.config.path(f"custom_components/{DOMAIN}")
-    if not os.path.exists(db_dir):
-        os.makedirs(db_dir)
-    db_path = os.path.join(db_dir, f"tracker_{entry.entry_id}.db")
+    # --- CẬP NHẬT: TẠO THƯ MỤC RIÊNG CHO DATABASE ---
+    # 1. Định nghĩa thư mục chứa DB: /config/electricity_consumption_tracker/
+    storage_dir = hass.config.path("electricity_consumption_tracker")
+    
+    # 2. Tạo thư mục nếu chưa tồn tại
+    if not os.path.exists(storage_dir):
+        try:
+            os.makedirs(storage_dir)
+        except OSError as e:
+            _LOGGER.error(f"Không thể tạo thư mục lưu trữ {storage_dir}: {e}")
+            return False
+
+    # 3. Định nghĩa đường dẫn file DB bên trong thư mục đó
+    # Tên file: electricity_data_{entry_id}.db
+    db_path = os.path.join(storage_dir, f"electricity_data_{entry.entry_id}.db")
     
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "db_path": db_path
     }
 
-    # 2. Register Device
+    # Register Device
     device_registry = dr.async_get(hass)
     device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -52,7 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         sw_version="2026.01.19",
     )
 
-    # 3. Initialize Database
+    # Initialize Database
     def init_db():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -92,7 +99,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.async_add_executor_job(init_db)
 
-    # 4. Helper Function: Calculate EVN Cost
+    # Helper Function: Calculate EVN Cost
     def calculate_cost(kwh, year, month):
         target_date = f"{year}-{month:02d}-01"
         valid_dates = [d for d in PRICE_HISTORY if d <= target_date]
@@ -113,7 +120,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             
         return round(cost)
 
-    # 5. Core Update Logic
+    # Core Update Logic
     async def update_data(now=None):
         source_entity = entry.data[CONF_SOURCE_SENSOR]
         state = hass.states.get(source_entity)
@@ -164,7 +171,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await hass.async_add_executor_job(db_work_update)
 
-    # 6. Service: Override Data
+    # Service: Override Data
     async def handle_override(call: ServiceCall):
         if call.data.get("entry_id") != entry.entry_id:
             return
@@ -225,9 +232,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
-    """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, ["sensor"])
