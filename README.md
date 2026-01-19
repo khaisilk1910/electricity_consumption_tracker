@@ -14,7 +14,13 @@ Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản l�
      
    - Vào Settings -> Integrations -> Add integration nhập `Electricity Consumption Tracker` để thêm
   
-     <img width="633" height="810" alt="image" src="https://github.com/user-attachments/assets/6d1baaaf-444f-4405-8559-1a78cccfb672" />
+     <img width="492" height="647" alt="image" src="https://github.com/user-attachments/assets/743ac0af-26c1-41fc-8c3c-d978ad07038a" />
+  
+     Điền tên muốn lưu và chọn sensor dữ liệu theo ngày đã có để theo dõi (Lưu ý chỉ chọn sensor sản lượng Ngày)
+
+     <img width="413" height="424" alt="image" src="https://github.com/user-attachments/assets/ed9cbe21-81bc-4a01-afa2-09956d20eb8d" />
+
+
 
 
 ## ✨ Tính năng nổi bật
