@@ -1,12 +1,20 @@
+"""The Electricity Consumption Tracker integration."""
 import sqlite3
-import datetime
 import os
+import logging
 import voluptuous as vol
 from datetime import timedelta
+import homeassistant.util.dt as dt_util
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.components.persistent_notification import async_create
+
 from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, CONF_FRIENDLY_NAME
+
+_LOGGER = logging.getLogger(__name__)
 
 SERVICE_OVERRIDE_SCHEMA = vol.Schema({
     vol.Required("entry_id"): cv.string,
@@ -14,88 +22,232 @@ SERVICE_OVERRIDE_SCHEMA = vol.Schema({
     vol.Required("value"): vol.Coerce(float),
 })
 
-async def async_setup_entry(hass, entry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Electricity Consumption Tracker from a config entry."""
+    
+    # 1. Setup Database Path
     db_dir = hass.config.path(f"custom_components/{DOMAIN}")
-    if not os.path.exists(db_dir): os.makedirs(db_dir)
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+    # Tên file db theo entry_id để tránh conflict nếu cài nhiều instance
     db_path = os.path.join(db_dir, f"tracker_{entry.entry_id}.db")
     
-    interval = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, 1))
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {
+        "db_path": db_path
+    }
 
-    # Khởi tạo Device Registry
-    dr.async_get(hass).async_get_or_create(
+    # 2. Register Device
+    device_registry = dr.async_get(hass)
+    device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
-        name=entry.data[CONF_FRIENDLY_NAME],
-        model="Electricity Tracker V1",
-        sw_version="2026.01.18",
+        name=entry.data.get(CONF_FRIENDLY_NAME, "Electricity Tracker"),
+        manufacturer="Custom Component",
+        model="Electricity Tracker DB Based",
+        sw_version="2026.01.19",
     )
 
+    # 3. Initialize Database (Structure matches tongou_tong_electricity_data.db)
     def init_db():
-        """Tạo cấu trúc 3 bảng giống hệt file .db đính kèm."""
         conn = sqlite3.connect(db_path)
-        conn.execute("CREATE TABLE IF NOT EXISTS daily_usage (nam INTEGER, thang INTEGER, ngay INTEGER, san_luong REAL, don_vi TEXT, PRIMARY KEY (nam, thang, ngay))")
-        conn.execute("CREATE TABLE IF NOT EXISTS monthly_bill (nam INTEGER, thang INTEGER, tong_san_luong REAL, don_vi_san_luong TEXT, thanh_tien REAL, don_vi_tien TEXT, PRIMARY KEY (nam, thang))")
-        conn.execute("CREATE TABLE IF NOT EXISTS total_usage (tong_san_luong REAL, don_vi TEXT, tong_so_thang INTEGER)")
+        cursor = conn.cursor()
+        
+        # Table: daily_usage
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_usage (
+                nam INTEGER,
+                thang INTEGER,
+                ngay INTEGER,
+                san_luong REAL,
+                don_vi TEXT,
+                PRIMARY KEY (nam, thang, ngay)
+            )
+        """)
+        
+        # Table: monthly_bill
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS monthly_bill (
+                nam INTEGER,
+                thang INTEGER,
+                tong_san_luong REAL,
+                don_vi_san_luong TEXT,
+                thanh_tien REAL,
+                don_vi_tien TEXT,
+                PRIMARY KEY (nam, thang)
+            )
+        """)
+        
+        # Table: total_usage
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS total_usage (
+                tong_san_luong REAL,
+                don_vi TEXT,
+                tong_so_thang INTEGER
+            )
+        """)
         conn.commit()
         conn.close()
 
     await hass.async_add_executor_job(init_db)
 
+    # 4. Helper Function: Calculate EVN Cost
     def calculate_cost(kwh, year, month):
         target_date = f"{year}-{month:02d}-01"
-        sorted_dates = sorted([d for d in PRICE_HISTORY if d <= target_date])
-        tiers = PRICE_HISTORY[sorted_dates[-1]] if sorted_dates else PRICE_HISTORY[list(PRICE_HISTORY.keys())[0]]
-        cost, rem = 0, kwh
-        for limit, price in tiers:
-            usage = min(rem, limit); cost += usage * price; rem -= usage
-            if rem <= 0: break
-        return cost
-
-    async def update_data(now=None):
-        source = entry.data[CONF_SOURCE_SENSOR]
-        state = hass.states.get(source)
-        val = 0.0
-        if not state or state.state in ["unknown", "unavailable"]:
-            async_create(hass, title="Lỗi Sensor", message=f"Sensor `{source}` không có dữ liệu.", notification_id=f"err_{entry.entry_id}")
+        # Tìm bảng giá áp dụng mới nhất tính đến target_date
+        valid_dates = [d for d in PRICE_HISTORY if d <= target_date]
+        if not valid_dates:
+            # Fallback nếu ngày quá cũ
+            tiers = PRICE_HISTORY[sorted(PRICE_HISTORY.keys())[0]]
         else:
-            try: val = float(state.state)
-            except: val = 0.0
-
-        dt = datetime.datetime.now()
-        def db_work():
-            conn = sqlite3.connect(db_path)
-            conn.execute("INSERT OR REPLACE INTO daily_usage VALUES (?, ?, ?, ?, 'kWh')", (dt.year, dt.month, dt.day, val))
-            m_usage = conn.execute("SELECT SUM(san_luong) FROM daily_usage WHERE nam=? AND thang=?", (dt.year, dt.month)).fetchone()[0] or 0
-            m_cost = calculate_cost(m_usage, dt.year, dt.month)
-            conn.execute("INSERT OR REPLACE INTO monthly_bill VALUES (?, ?, ?, 'kWh', ?, 'đ')", (dt.year, dt.month, m_usage, m_cost))
-            t_usage = conn.execute("SELECT SUM(tong_san_luong) FROM monthly_bill").fetchone()[0] or 0
-            t_months = conn.execute("SELECT COUNT(*) FROM monthly_bill").fetchone()[0] or 0
-            conn.execute("DELETE FROM total_usage")
-            conn.execute("INSERT INTO total_usage VALUES (?, 'kWh', ?)", (t_usage, t_months))
-            conn.commit(); conn.close()
+            tiers = PRICE_HISTORY[sorted(valid_dates)[-1]]
+            
+        cost = 0
+        remaining_kwh = kwh
         
-        await hass.async_add_executor_job(db_work)
-        await hass.config_entries.async_reload(entry.entry_id)
+        for limit, price in tiers:
+            if remaining_kwh <= 0:
+                break
+            # Nếu limit là inf, lấy hết phần còn lại
+            usage = min(remaining_kwh, limit) if limit != float('inf') else remaining_kwh
+            cost += usage * price
+            remaining_kwh -= usage
+            
+        return round(cost)
 
-    async def handle_override(call):
-        if call.data.get("entry_id") != entry.entry_id: return
-        raw_dt, v = call.data.get("date"), call.data.get("value")
-        d = raw_dt.date() if isinstance(raw_dt, datetime.datetime) else raw_dt
-        def db_override():
+    # 5. Core Update Logic
+    async def update_data(now=None):
+        """Đọc sensor nguồn và ghi vào DB."""
+        source_entity = entry.data[CONF_SOURCE_SENSOR]
+        state = hass.states.get(source_entity)
+        
+        current_kwh = 0.0
+        if not state or state.state in ["unknown", "unavailable"]:
+            _LOGGER.warning(f"Sensor {source_entity} unavailable")
+            return
+        else:
+            try:
+                current_kwh = float(state.state)
+            except ValueError:
+                return
+
+        # Lấy thời gian hiện tại
+        dt_now = dt_util.now()
+        year, month, day = dt_now.year, dt_now.month, dt_now.day
+
+        def db_work_update():
             conn = sqlite3.connect(db_path)
-            conn.execute("INSERT OR REPLACE INTO daily_usage VALUES (?, ?, ?, ?, 'kWh')", (d.year, d.month, d.day, v))
-            m_usage = conn.execute("SELECT SUM(san_luong) FROM daily_usage WHERE nam=? AND thang=?", (d.year, d.month)).fetchone()[0] or 0
-            m_cost = calculate_cost(m_usage, d.year, d.month)
-            conn.execute("INSERT OR REPLACE INTO monthly_bill VALUES (?, ?, ?, 'kWh', ?, 'đ')", (d.year, d.month, m_usage, m_cost))
-            conn.commit(); conn.close()
-        await hass.async_add_executor_job(db_override)
-        await hass.config_entries.async_reload(entry.entry_id)
+            cursor = conn.cursor()
+            
+            # A. Cập nhật Daily Usage (Lưu ý: Sensor nguồn phải là Daily Reset hoặc bạn phải tự tính delta.
+            # Code này giả định sensor nguồn trả về sản lượng tiêu thụ trong ngày (kWh/day))
+            cursor.execute("""
+                INSERT OR REPLACE INTO daily_usage (nam, thang, ngay, san_luong, don_vi)
+                VALUES (?, ?, ?, ?, 'kWh')
+            """, (year, month, day, current_kwh))
+            
+            # B. Tính toán Monthly
+            cursor.execute("SELECT SUM(san_luong) FROM daily_usage WHERE nam=? AND thang=?", (year, month))
+            monthly_sum = cursor.fetchone()[0] or 0.0
+            
+            monthly_cost = calculate_cost(monthly_sum, year, month)
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO monthly_bill (nam, thang, tong_san_luong, don_vi_san_luong, thanh_tien, don_vi_tien)
+                VALUES (?, ?, ?, 'kWh', ?, 'đ')
+            """, (year, month, monthly_sum, monthly_cost))
+            
+            # C. Tính toán Total
+            cursor.execute("SELECT SUM(tong_san_luong) FROM monthly_bill")
+            total_kwh = cursor.fetchone()[0] or 0.0
+            
+            cursor.execute("SELECT COUNT(*) FROM monthly_bill")
+            total_months = cursor.fetchone()[0] or 0
+            
+            cursor.execute("DELETE FROM total_usage")
+            cursor.execute("INSERT INTO total_usage (tong_san_luong, don_vi, tong_so_thang) VALUES (?, 'kWh', ?)", (total_kwh, total_months))
+            
+            conn.commit()
+            conn.close()
 
+        await hass.async_add_executor_job(db_work_update)
+        # Reload để update sensors
+        # await hass.config_entries.async_reload(entry.entry_id) # Reload toàn bộ entry hơi nặng
+        # Thay vào đó ta sẽ kích hoạt update cho các entity cụ thể nếu cần, 
+        # nhưng ở đây để đơn giản ta dựa vào polling của sensor.
+
+    # 6. Service: Override Data
+    async def handle_override(call: ServiceCall):
+        if call.data.get("entry_id") != entry.entry_id:
+            return
+            
+        raw_date = call.data.get("date")
+        val = call.data.get("value")
+        
+        # Convert date safely
+        if hasattr(raw_date, "date"):
+            target_date = raw_date
+        else:
+            target_date = dt_util.parse_datetime(str(raw_date))
+            if target_date is None:
+                target_date = dt_util.parse_date(str(raw_date))
+        
+        y, m, d = target_date.year, target_date.month, target_date.day
+        
+        def db_work_override():
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # Ghi đè ngày cụ thể
+            cursor.execute("""
+                INSERT OR REPLACE INTO daily_usage (nam, thang, ngay, san_luong, don_vi)
+                VALUES (?, ?, ?, ?, 'kWh')
+            """, (y, m, d, val))
+            
+            # Tính lại tháng đó
+            cursor.execute("SELECT SUM(san_luong) FROM daily_usage WHERE nam=? AND thang=?", (y, m))
+            monthly_sum = cursor.fetchone()[0] or 0.0
+            monthly_cost = calculate_cost(monthly_sum, y, m)
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO monthly_bill (nam, thang, tong_san_luong, don_vi_san_luong, thanh_tien, don_vi_tien)
+                VALUES (?, ?, ?, 'kWh', ?, 'đ')
+            """, (y, m, monthly_sum, monthly_cost))
+            
+            # Tính lại tổng
+            cursor.execute("SELECT SUM(tong_san_luong) FROM monthly_bill")
+            total_kwh = cursor.fetchone()[0] or 0.0
+            cursor.execute("SELECT COUNT(*) FROM monthly_bill")
+            total_months = cursor.fetchone()[0] or 0
+            
+            cursor.execute("DELETE FROM total_usage")
+            cursor.execute("INSERT INTO total_usage VALUES (?, 'kWh', ?)", (total_kwh, total_months))
+            
+            conn.commit()
+            conn.close()
+
+        await hass.async_add_executor_job(db_work_override)
+        _LOGGER.info(f"Overridden data for {y}-{m}-{d}: {val} kWh")
+
+    # Register Service
     hass.services.async_register(DOMAIN, "override_data", handle_override, schema=SERVICE_OVERRIDE_SCHEMA)
-    entry.async_on_unload(async_track_time_interval(hass, update_data, timedelta(hours=interval)))
-    entry.async_on_unload(entry.add_update_listener(lambda h, e: h.config_entries.async_reload(e.entry_id)))
+
+    # Setup Update Interval
+    update_interval_hours = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, 1))
+    entry.async_on_unload(async_track_time_interval(hass, update_data, timedelta(hours=update_interval_hours)))
+    
+    # Listener cho thay đổi option
+    entry.async_on_unload(entry.add_update_listener(update_listener))
+
+    # Forward setup to sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    
     return True
 
-async def async_unload_entry(hass, entry):
+async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
+    """Handle options update."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, ["sensor"])
