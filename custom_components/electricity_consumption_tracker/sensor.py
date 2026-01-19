@@ -8,9 +8,10 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback # [NEW] Import callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from .const import DOMAIN
+from homeassistant.helpers.dispatcher import async_dispatcher_connect # [NEW] Import dispatcher connect
+from .const import DOMAIN, SIGNAL_UPDATE_SENSORS # [NEW] Import signal
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,12 +19,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     """Set up the sensor platform."""
     # Lấy đường dẫn DB và Tên hiển thị từ cấu hình
     db_path = hass.data[DOMAIN][entry.entry_id]["db_path"]
-    friendly_name = entry.data.get("friendly_name", "Electricity") # VD: "Điện Nhà Khải"
+    friendly_name = entry.data.get("friendly_name", "Electricity")
     
     entities = []
     
     # 1. Luôn tạo Sensor Tổng (All Time)
-    # Tên sẽ là: "Điện Nhà Khải Total All Time"
     entities.append(ConsumptionTotalSensor(db_path, f"{friendly_name} Total All Time", entry.entry_id))
 
     # 2. Quét Database để tìm lịch sử (Auto-Discovery)
@@ -54,15 +54,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         
         # 3. Tạo Sensor Năm (Dynamic Year)
         for year in years:
-            # SỬA: Thêm friendly_name vào trước để phân biệt
-            # VD: "Điện Nhà Khải - Năm 2025"
             name = f"{friendly_name} - Năm {year}"
             entities.append(ConsumptionYearlySensor(db_path, name, year, entry.entry_id))
 
         # 4. Tạo Sensor Tháng (Dynamic Month)
         for year, month in months:
-            # SỬA: Thêm friendly_name vào trước
-            # VD: "Điện Nhà Khải - Tháng 9/2025"
             name = f"{friendly_name} - Tháng {month}/{year}"
             entities.append(ConsumptionMonthlySensor(db_path, name, year, month, entry.entry_id))
     
@@ -75,11 +71,28 @@ class ConsumptionBase(SensorEntity):
         self._db_path = db_path
         self._attr_name = name
         self._entry_id = entry_id
-        self._attr_has_entity_name = False  # False = Dùng trọn vẹn tên mình đặt ở trên
+        self._attr_has_entity_name = False 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry_id)},
             "name": entry_id, # Link vào device gốc
         }
+
+    async def async_added_to_hass(self):
+        """Đăng ký lắng nghe sự kiện update khi entity được thêm vào HA."""
+        await super().async_added_to_hass()
+        # [NEW] Lắng nghe tín hiệu cập nhật
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_UPDATE_SENSORS}_{self._entry_id}",
+                self._force_update_callback
+            )
+        )
+
+    @callback
+    def _force_update_callback(self):
+        """[NEW] Callback ép buộc cập nhật lại state."""
+        self.async_schedule_update_ha_state(True)
 
 class ConsumptionMonthlySensor(ConsumptionBase):
     """Sensor hiển thị chi tiết Tháng (có attribute chi_tiet_ngay)."""
@@ -92,7 +105,6 @@ class ConsumptionMonthlySensor(ConsumptionBase):
         super().__init__(db_path, name, entry_id)
         self._year = year
         self._month = month
-        # Unique ID chứa cả entry_id, đảm bảo không bao giờ trùng giữa các thiết bị
         self._attr_unique_id = f"{entry_id}_bill_{year}_{month:02d}"
         self._attr_icon = "mdi:calendar-month"
 
