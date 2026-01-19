@@ -13,3 +13,5 @@ PRICE_HISTORY = {
     "2024-10-11": [(50, 1893), (50, 1956), (100, 2271), (100, 2860), (100, 3197), (float('inf'), 3302)],
     "2025-05-10": [(50, 1984), (50, 2050), (100, 2380), (100, 2998), (100, 3350), (float('inf'), 3460)]
 }
+# Tín hiệu để cập nhật sensor sau khi nhập mới dữ liệu bằng electricity_consumption_tracker.override_data
+SIGNAL_UPDATE_SENSORS = "electricity_consumption_tracker_update_signal"
