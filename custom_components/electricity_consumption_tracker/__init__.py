@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.dispatcher import async_dispatcher_send # [NEW] Import dispatcher
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, CONF_FRIENDLY_NAME, SIGNAL_UPDATE_SENSORS
 
@@ -28,7 +28,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Electricity Consumption Tracker from a config entry."""
     
-    # 1. Định nghĩa thư mục chứa DB: /config/electricity_consumption_tracker/
+    # 1. Định nghĩa thư mục chứa DB
     storage_dir = hass.config.path("electricity_consumption_tracker")
     
     # 2. Tạo thư mục nếu chưa tồn tại
@@ -39,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error(f"Không thể tạo thư mục lưu trữ {storage_dir}: {e}")
             return False
 
-    # 3. Định nghĩa đường dẫn file DB bên trong thư mục đó
+    # 3. Định nghĩa đường dẫn file DB
     db_path = os.path.join(storage_dir, f"electricity_data_{entry.entry_id}.db")
     
     hass.data.setdefault(DOMAIN, {})
@@ -219,7 +219,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.async_add_executor_job(db_work_override)
         _LOGGER.info(f"Overridden data for {y}-{m}-{d}: {val} kWh")
         
-        # [NEW] Gửi tín hiệu cập nhật cho các sensor
         async_dispatcher_send(hass, f"{SIGNAL_UPDATE_SENSORS}_{entry.entry_id}")
 
     hass.services.async_register(DOMAIN, "override_data", handle_override, schema=SERVICE_OVERRIDE_SCHEMA)
@@ -228,6 +227,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(async_track_time_interval(hass, update_data, timedelta(hours=update_interval_hours)))
     
     entry.async_on_unload(entry.add_update_listener(update_listener))
+
+    # Chạy update ngay lập tức để lấy dữ liệu sensor hiện tại
+    await update_data()
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     
