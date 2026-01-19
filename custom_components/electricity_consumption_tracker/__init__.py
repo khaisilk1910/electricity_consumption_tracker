@@ -16,11 +16,19 @@ from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTO
 
 _LOGGER = logging.getLogger(__name__)
 
+# --- PHẦN SỬA LỖI Ở ĐÂY ---
+# Lỗi cũ: cv.any(cv.date, cv.datetime) -> Sai vì cv không có hàm any
+# Sửa lại: vol.Any(cv.date, cv.datetime) -> Đúng chuẩn Voluptuous
 SERVICE_OVERRIDE_SCHEMA = vol.Schema({
     vol.Required("entry_id"): cv.string,
-    vol.Required("date"): cv.any(cv.date, cv.datetime),
+    vol.Required("date"): vol.Any(cv.date, cv.datetime), 
     vol.Required("value"): vol.Coerce(float),
 })
+# ---------------------------
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the Electricity Consumption Tracker component."""
+    return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Electricity Consumption Tracker from a config entry."""
@@ -29,7 +37,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     db_dir = hass.config.path(f"custom_components/{DOMAIN}")
     if not os.path.exists(db_dir):
         os.makedirs(db_dir)
-    # Tên file db theo entry_id để tránh conflict nếu cài nhiều instance
     db_path = os.path.join(db_dir, f"tracker_{entry.entry_id}.db")
     
     hass.data.setdefault(DOMAIN, {})
@@ -48,12 +55,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         sw_version="2026.01.19",
     )
 
-    # 3. Initialize Database (Structure matches tongou_tong_electricity_data.db)
+    # 3. Initialize Database
     def init_db():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Table: daily_usage
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS daily_usage (
                 nam INTEGER,
@@ -65,7 +71,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         """)
         
-        # Table: monthly_bill
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS monthly_bill (
                 nam INTEGER,
@@ -78,7 +83,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         """)
         
-        # Table: total_usage
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS total_usage (
                 tong_san_luong REAL,
@@ -94,10 +98,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # 4. Helper Function: Calculate EVN Cost
     def calculate_cost(kwh, year, month):
         target_date = f"{year}-{month:02d}-01"
-        # Tìm bảng giá áp dụng mới nhất tính đến target_date
         valid_dates = [d for d in PRICE_HISTORY if d <= target_date]
         if not valid_dates:
-            # Fallback nếu ngày quá cũ
             tiers = PRICE_HISTORY[sorted(PRICE_HISTORY.keys())[0]]
         else:
             tiers = PRICE_HISTORY[sorted(valid_dates)[-1]]
@@ -108,7 +110,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for limit, price in tiers:
             if remaining_kwh <= 0:
                 break
-            # Nếu limit là inf, lấy hết phần còn lại
             usage = min(remaining_kwh, limit) if limit != float('inf') else remaining_kwh
             cost += usage * price
             remaining_kwh -= usage
@@ -117,7 +118,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # 5. Core Update Logic
     async def update_data(now=None):
-        """Đọc sensor nguồn và ghi vào DB."""
         source_entity = entry.data[CONF_SOURCE_SENSOR]
         state = hass.states.get(source_entity)
         
@@ -131,7 +131,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except ValueError:
                 return
 
-        # Lấy thời gian hiện tại
         dt_now = dt_util.now()
         year, month, day = dt_now.year, dt_now.month, dt_now.day
 
@@ -139,14 +138,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
-            # A. Cập nhật Daily Usage (Lưu ý: Sensor nguồn phải là Daily Reset hoặc bạn phải tự tính delta.
-            # Code này giả định sensor nguồn trả về sản lượng tiêu thụ trong ngày (kWh/day))
             cursor.execute("""
                 INSERT OR REPLACE INTO daily_usage (nam, thang, ngay, san_luong, don_vi)
                 VALUES (?, ?, ?, ?, 'kWh')
             """, (year, month, day, current_kwh))
             
-            # B. Tính toán Monthly
             cursor.execute("SELECT SUM(san_luong) FROM daily_usage WHERE nam=? AND thang=?", (year, month))
             monthly_sum = cursor.fetchone()[0] or 0.0
             
@@ -157,7 +153,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 VALUES (?, ?, ?, 'kWh', ?, 'đ')
             """, (year, month, monthly_sum, monthly_cost))
             
-            # C. Tính toán Total
             cursor.execute("SELECT SUM(tong_san_luong) FROM monthly_bill")
             total_kwh = cursor.fetchone()[0] or 0.0
             
@@ -171,10 +166,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             conn.close()
 
         await hass.async_add_executor_job(db_work_update)
-        # Reload để update sensors
-        # await hass.config_entries.async_reload(entry.entry_id) # Reload toàn bộ entry hơi nặng
-        # Thay vào đó ta sẽ kích hoạt update cho các entity cụ thể nếu cần, 
-        # nhưng ở đây để đơn giản ta dựa vào polling của sensor.
 
     # 6. Service: Override Data
     async def handle_override(call: ServiceCall):
@@ -184,7 +175,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raw_date = call.data.get("date")
         val = call.data.get("value")
         
-        # Convert date safely
         if hasattr(raw_date, "date"):
             target_date = raw_date
         else:
@@ -198,13 +188,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
-            # Ghi đè ngày cụ thể
             cursor.execute("""
                 INSERT OR REPLACE INTO daily_usage (nam, thang, ngay, san_luong, don_vi)
                 VALUES (?, ?, ?, ?, 'kWh')
             """, (y, m, d, val))
             
-            # Tính lại tháng đó
             cursor.execute("SELECT SUM(san_luong) FROM daily_usage WHERE nam=? AND thang=?", (y, m))
             monthly_sum = cursor.fetchone()[0] or 0.0
             monthly_cost = calculate_cost(monthly_sum, y, m)
@@ -214,7 +202,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 VALUES (?, ?, ?, 'kWh', ?, 'đ')
             """, (y, m, monthly_sum, monthly_cost))
             
-            # Tính lại tổng
             cursor.execute("SELECT SUM(tong_san_luong) FROM monthly_bill")
             total_kwh = cursor.fetchone()[0] or 0.0
             cursor.execute("SELECT COUNT(*) FROM monthly_bill")
@@ -229,17 +216,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.async_add_executor_job(db_work_override)
         _LOGGER.info(f"Overridden data for {y}-{m}-{d}: {val} kWh")
 
-    # Register Service
     hass.services.async_register(DOMAIN, "override_data", handle_override, schema=SERVICE_OVERRIDE_SCHEMA)
 
-    # Setup Update Interval
     update_interval_hours = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, 1))
     entry.async_on_unload(async_track_time_interval(hass, update_data, timedelta(hours=update_interval_hours)))
     
-    # Listener cho thay đổi option
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    # Forward setup to sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     
     return True
