@@ -25,6 +25,8 @@ Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản l�
 
 * **Của custom_component:** `\config\custom_components\electricity_consumption_tracker`
 * **File dữ liệu:** Nằm riêng biệt và ngoài thư mục config của Home assistant `\config\electricity_consumption_tracker`
+  <img width="843" height="182" alt="image" src="https://github.com/user-attachments/assets/66b3ffe1-b601-43e8-8875-09b9bad75798" />
+
 
   
 ## ✨ Tính năng nổi bật
