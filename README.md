@@ -21,8 +21,12 @@ Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản l�
      <img width="413" height="424" alt="image" src="https://github.com/user-attachments/assets/ed9cbe21-81bc-4a01-afa2-09956d20eb8d" />
 
 
+## ✨ Đường dẫn
 
+* **Của custom_component:** `\config\custom_components\electricity_consumption_tracker`
+* **File dữ liệu:** Nằm riêng biệt và ngoài thư mục config của Home assistant `\config\electricity_consumption_tracker`
 
+  
 ## ✨ Tính năng nổi bật
 
 * **Hỗ trợ đa thực thể (Multi-Entry):** Cho phép thêm không giới hạn các thiết bị theo dõi (như Tổng nhà, Điều hòa, Bếp điện...) với các file cơ sở dữ liệu SQLite (`.db`) riêng biệt cho từng thiết bị.
