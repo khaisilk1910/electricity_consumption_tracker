@@ -16,12 +16,14 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
     """Set up the sensor platform."""
+    # Lấy đường dẫn DB và Tên hiển thị từ cấu hình
     db_path = hass.data[DOMAIN][entry.entry_id]["db_path"]
-    friendly_name = entry.data.get("friendly_name", "Electricity")
+    friendly_name = entry.data.get("friendly_name", "Electricity") # VD: "Điện Nhà Khải"
     
     entities = []
     
     # 1. Luôn tạo Sensor Tổng (All Time)
+    # Tên sẽ là: "Điện Nhà Khải Total All Time"
     entities.append(ConsumptionTotalSensor(db_path, f"{friendly_name} Total All Time", entry.entry_id))
 
     # 2. Quét Database để tìm lịch sử (Auto-Discovery)
@@ -44,7 +46,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 
                 conn.close()
             except Exception as e:
-                _LOGGER.error(f"Lỗi khi quét database: {e}")
+                _LOGGER.error(f"Lỗi khi quét database {db_path}: {e}")
             return found_years, found_months
 
         # Chạy hàm quét
@@ -52,14 +54,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         
         # 3. Tạo Sensor Năm (Dynamic Year)
         for year in years:
-            # Tên sensor: "Dữ liệu điện Năm 2025"
-            name = f"Dữ liệu điện Năm {year}"
+            # SỬA: Thêm friendly_name vào trước để phân biệt
+            # VD: "Điện Nhà Khải - Năm 2025"
+            name = f"{friendly_name} - Năm {year}"
             entities.append(ConsumptionYearlySensor(db_path, name, year, entry.entry_id))
 
         # 4. Tạo Sensor Tháng (Dynamic Month)
         for year, month in months:
-            # Tên sensor: "Tiền điện Tháng 9/2025"
-            name = f"Tiền điện Tháng {month}/{year}"
+            # SỬA: Thêm friendly_name vào trước
+            # VD: "Điện Nhà Khải - Tháng 9/2025"
+            name = f"{friendly_name} - Tháng {month}/{year}"
             entities.append(ConsumptionMonthlySensor(db_path, name, year, month, entry.entry_id))
     
     async_add_entities(entities, update_before_add=True)
@@ -71,10 +75,10 @@ class ConsumptionBase(SensorEntity):
         self._db_path = db_path
         self._attr_name = name
         self._entry_id = entry_id
-        self._attr_has_entity_name = False  # Giữ nguyên tên mình đặt, không để HA tự đổi
+        self._attr_has_entity_name = False  # False = Dùng trọn vẹn tên mình đặt ở trên
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry_id)},
-            "name": entry_id,
+            "name": entry_id, # Link vào device gốc
         }
 
 class ConsumptionMonthlySensor(ConsumptionBase):
@@ -88,7 +92,7 @@ class ConsumptionMonthlySensor(ConsumptionBase):
         super().__init__(db_path, name, entry_id)
         self._year = year
         self._month = month
-        # Unique ID để HA nhận diện
+        # Unique ID chứa cả entry_id, đảm bảo không bao giờ trùng giữa các thiết bị
         self._attr_unique_id = f"{entry_id}_bill_{year}_{month:02d}"
         self._attr_icon = "mdi:calendar-month"
 
@@ -99,11 +103,9 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            # Lấy tổng tiền và kWh
             cursor.execute("SELECT thanh_tien, tong_san_luong FROM monthly_bill WHERE nam=? AND thang=?", (self._year, self._month))
             res = cursor.fetchone()
             
-            # Lấy chi tiết ngày để đưa vào attributes
             cursor.execute("SELECT ngay, san_luong FROM daily_usage WHERE nam=? AND thang=? ORDER BY ngay ASC", (self._year, self._month))
             daily_rows = cursor.fetchall()
             conn.close()
@@ -112,7 +114,6 @@ class ConsumptionMonthlySensor(ConsumptionBase):
                 self._attr_native_value = int(res[0])
                 self._attr_extra_state_attributes = {
                     "tong_san_luong_kwh": round(res[1], 2),
-                    
                     "chi_tiet_ngay": {f"Ngay_{r[0]}": round(r[1], 2) for r in daily_rows},
                     "data_source": "Monthly Detail Auto Gen"
                 }
@@ -141,11 +142,9 @@ class ConsumptionYearlySensor(ConsumptionBase):
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            # Tính tổng
             cursor.execute("SELECT SUM(thanh_tien), SUM(tong_san_luong) FROM monthly_bill WHERE nam=?", (self._year,))
             res = cursor.fetchone()
             
-            # Lấy chi tiết tháng
             cursor.execute("SELECT thang, tong_san_luong, thanh_tien FROM monthly_bill WHERE nam=? ORDER BY thang ASC", (self._year,))
             month_rows = cursor.fetchall()
             conn.close()
@@ -154,7 +153,6 @@ class ConsumptionYearlySensor(ConsumptionBase):
                 self._attr_native_value = int(res[0])
                 self._attr_extra_state_attributes = {
                     "tong_san_luong_nam": round(res[1], 2),
-                    # Attribute
                     "chi_tiet_cac_thang": {
                         f"Thang_{r[0]}": {
                             "san_luong_kwh": round(r[1], 2),
