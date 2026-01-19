@@ -38,15 +38,14 @@ class ConsumptionTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry):
-        # --- FIX LỖI 500 TẠI ĐÂY ---
-        # Không dùng self.config_entry vì nó trùng với thuộc tính hệ thống
+        
         self._config_entry = config_entry 
 
     async def async_step_init(self, user_input=None):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        # Sử dụng biến _config_entry đã đổi tên
+        
         current_val = self._config_entry.options.get(
             CONF_UPDATE_INTERVAL, self._config_entry.data.get(CONF_UPDATE_INTERVAL, 1)
         )
