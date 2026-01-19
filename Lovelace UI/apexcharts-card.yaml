@@ -1,3 +1,7 @@
+#Cài đặt thẻ 
+#1 - Tạo 2 Helpers Input Select và đặt tên tùy ý
+#2 - Lấy tên hai input_select vừa tạo thay thế vào đây
+#3 - Thay thế tên sensor trong entity: ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' + var1}
 type: vertical-stack
 cards:
   - type: horizontal-stack
@@ -38,7 +42,9 @@ cards:
           span:
             start: month
           series:
-            - entity: ${'sensor.tongou_electricity_bill_' + var1 + '_' + var2}
+            - entity: >-
+                ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' +
+                var1}
               type: column
               name: Sản lượng
               unit: kWh
@@ -66,7 +72,9 @@ cards:
                 }
                 // Sắp xếp theo ngày tăng dần
                 return data.sort((a, b) => a[0] - b[0]);
-            - entity: ${'sensor.tongou_electricity_bill_' + var1 + '_' + var2}
+            - entity: >-
+                ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' +
+                var1}
               name: Tổng sản lượng
               color: "#2196f3"
               type: column
@@ -80,7 +88,9 @@ cards:
                 const val = parseFloat(entity.attributes.tong_san_luong_kwh);
                 // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
                 return [[new Date().getTime(), val]];
-            - entity: ${'sensor.tongou_electricity_bill_' + var1 + '_' + var2}
+            - entity: >-
+                ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' +
+                var1}
               name: Tổng Tiền
               color: "#ff9800"
               type: column
