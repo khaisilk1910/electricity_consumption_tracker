@@ -10,8 +10,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.dispatcher import async_dispatcher_send # [NEW] Import dispatcher
 
-from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, CONF_FRIENDLY_NAME
+from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, CONF_FRIENDLY_NAME, SIGNAL_UPDATE_SENSORS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +28,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Electricity Consumption Tracker from a config entry."""
     
-    # --- CẬP NHẬT: TẠO THƯ MỤC RIÊNG CHO DATABASE ---
     # 1. Định nghĩa thư mục chứa DB: /config/electricity_consumption_tracker/
     storage_dir = hass.config.path("electricity_consumption_tracker")
     
@@ -40,7 +40,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return False
 
     # 3. Định nghĩa đường dẫn file DB bên trong thư mục đó
-    # Tên file: electricity_data_{entry_id}.db
     db_path = os.path.join(storage_dir, f"electricity_data_{entry.entry_id}.db")
     
     hass.data.setdefault(DOMAIN, {})
@@ -219,6 +218,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await hass.async_add_executor_job(db_work_override)
         _LOGGER.info(f"Overridden data for {y}-{m}-{d}: {val} kWh")
+        
+        # [NEW] Gửi tín hiệu cập nhật cho các sensor
+        async_dispatcher_send(hass, f"{SIGNAL_UPDATE_SENSORS}_{entry.entry_id}")
 
     hass.services.async_register(DOMAIN, "override_data", handle_override, schema=SERVICE_OVERRIDE_SCHEMA)
 
