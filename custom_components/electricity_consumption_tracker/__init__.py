@@ -16,9 +16,6 @@ from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTO
 
 _LOGGER = logging.getLogger(__name__)
 
-# --- PHẦN SỬA LỖI Ở ĐÂY ---
-# Lỗi cũ: cv.any(cv.date, cv.datetime) -> Sai vì cv không có hàm any
-# Sửa lại: vol.Any(cv.date, cv.datetime) -> Đúng chuẩn Voluptuous
 SERVICE_OVERRIDE_SCHEMA = vol.Schema({
     vol.Required("entry_id"): cv.string,
     vol.Required("date"): vol.Any(cv.date, cv.datetime), 
