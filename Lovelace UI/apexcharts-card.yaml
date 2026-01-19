@@ -1,7 +1,8 @@
-#Cài đặt thẻ 
-#1 - Tạo 2 Helpers Input Select và đặt tên tùy ý
-#2 - Lấy tên hai input_select vừa tạo thay thế vào đây
-#3 - Thay thế tên sensor trong entity: ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' + var1}
+#Cài đặt thẻ
+#1 - Cài 2 cái này trong HACS: https://github.com/RomRider/apexcharts-card và https://github.com/iantrich/config-template-card
+#2 - Tạo 2 Helpers Input Select và đặt tên tùy ý
+#3 - Lấy tên hai input_select vừa tạo thay thế vào đây
+#4 - Thay thế tên sensor trong entity: ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' + var1}
 type: vertical-stack
 cards:
   - type: horizontal-stack
