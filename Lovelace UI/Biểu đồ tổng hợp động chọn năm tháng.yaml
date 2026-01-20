@@ -1,5 +1,9 @@
 #Cài đặt thẻ
-#1 - Cài các cái này trong HACS: https://github.com/RomRider/apexcharts-card và https://github.com/iantrich/config-template-card và https://github.com/piitaya/lovelace-mushroom
+#1 - Cài các cái này trong HACS: 
+#     + https://github.com/RomRider/apexcharts-card
+#     + https://github.com/piitaya/lovelace-mushroom
+#     + https://github.com/iantrich/config-template-card
+#     + https://github.com/thomasloven/lovelace-card-mod
 #2 - Tạo 2 Helpers Input Select và đặt tên tùy ý
 #3 - Lấy tên hai input_select vừa tạo thay thế vào đây
 #4 - Thay thế tên sensor trong entity: ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' + var1}
@@ -9,34 +13,58 @@ cards:
     cards:
       - type: custom:mushroom-template-card
         primary: >-
-          Tổng Sản lượng của {{ state_attr(entity,'tong_so_thang_du_lieu') }}
-          Tháng
+          {{ '{:,.0f}'.format(states(entity) | float(2)) | replace('.', ',') }}
+          kWh
+        secondary: Tổng sản lượng {{ state_attr(entity, 'tong_so_thang_du_lieu') }} tháng
         features_position: bottom
         entity: sensor.tongou_tong_electricity_home_total_all_time
-        secondary: "{{ \"{:,.2f}\".format(states(entity) | float(0)) }} kWh"
         color: red
-        multiline_secondary: false
         vertical: true
+        card_mod:
+          style: |
+            #info {
+              --tile-info-primary-font-size:30px !important;
+              --tile-info-secondary-font-size: 15px !important;
+              --tile-info-secondary-font-weight: bold !important;
+              --tile-info-primary-color: red !important;
+              --tile-info-secondary-color: #164397 !important;
+               }
   - type: horizontal-stack
     cards:
-      - type: tile
-        entity: sensor.tongou_tong_electricity_home_total_all_time
-        name: Trước VAT (VND)
+      - type: custom:mushroom-template-card
+        primary: >-
+          {{ '{:,.0f}'.format(state_attr(entity, 'tong_tien_tich_luy') |
+          float(0)) | replace('.', ',') }} đ
+        secondary: Trước VAT (VND)
         icon: mdi:cash-100
-        color: red
-        show_entity_picture: false
-        state_content: tong_tien_tich_luy
-        vertical: false
         features_position: bottom
-      - type: tile
         entity: sensor.tongou_tong_electricity_home_total_all_time
-        name: Sau VAT (VND)
-        icon: mdi:cash-100
         color: red
-        show_entity_picture: false
-        state_content: tong_tien_tich_luy_sau_thue
-        vertical: false
+        card_mod:
+          style: |
+            #info {
+              --tile-info-primary-font-size:20px !important;
+              --tile-info-secondary-font-size: 10px !important;
+              --tile-info-primary-color: red !important;
+              --tile-info-secondary-color: #164397 !important;
+               }
+      - type: custom:mushroom-template-card
+        primary: >-
+          {{ '{:,.0f}'.format(state_attr(entity, 'tong_tien_tich_luy_sau_thue')
+          | float(0)) | replace('.', ',') }} đ
+        secondary: Sau VAT (VND)
+        icon: mdi:cash-100
         features_position: bottom
+        entity: sensor.tongou_tong_electricity_home_total_all_time
+        color: red
+        card_mod:
+          style: |
+            #info {
+              --tile-info-primary-font-size:20px !important;
+              --tile-info-secondary-font-size: 10px !important;
+              --tile-info-primary-color: red !important;
+              --tile-info-secondary-color: #164397 !important;
+               }
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-select-card
@@ -354,3 +382,4 @@ cards:
       columns: full
 grid_options:
   columns: full
+
