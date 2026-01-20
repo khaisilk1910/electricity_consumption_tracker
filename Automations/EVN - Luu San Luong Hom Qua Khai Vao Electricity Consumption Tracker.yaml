@@ -1,0 +1,41 @@
+#Nhớ đổi các sensor enrty_id của bạn vào thay thế 
+alias: EVN - Luu San Luong Hom Qua Khai Vao Electricity Consumption Tracker
+description: ""
+triggers:
+  - trigger: state
+    entity_id:
+      - sensor.tieu_thu_ky_nay_2
+    from: null
+    to: null
+conditions:
+  - condition: template
+    value_template: "{{ trigger.from_state is not none and trigger.to_state is not none }}"
+  - condition: template
+    value_template: >-
+      {{ trigger.from_state.state not in ['unknown', 'unavailable'] and
+      trigger.to_state.state not in ['unknown', 'unavailable'] }}
+  - condition: template
+    value_template: >
+      {{ trigger.to_state.state | float(0) > trigger.from_state.state | float(0)
+      }}
+actions:
+  - variables:
+      layngay_homqua: |
+        {{ (now() - timedelta(days=1)).strftime('%Y-%m-%d') }}
+      laysanluong_homqua: |
+        {{states('sensor.tieu_thu_hom_qua_2') | float(0) | round(2)}}
+  - action: electricity_consumption_tracker.override_data
+    metadata: {}
+    data:
+      entry_id: 01KFDRDZ1WRYJYAE5MP759PACN
+      date: "{{layngay_homqua}}"
+      value: "{{laysanluong_homqua| float(0) | round(2)}}"
+  - action: notify.mobile_app_khai_turbo_4_pro
+    metadata: {}
+    data:
+      title: Electricity Consumption Tracker
+      message: >-
+        Vừa cập nhật sản lượng EVN Khải vào dữ liệu{{'\n'}}-Sản
+        lượng:{{laysanluong_homqua| float(0) | round(2)}} kWh{{'\n'}}Của ngày:
+        {{layngay_homqua}}
+mode: single
