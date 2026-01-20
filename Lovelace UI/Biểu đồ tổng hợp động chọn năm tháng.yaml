@@ -83,7 +83,7 @@ cards:
               show:
                 datalabels: false
                 extremas: true
-                in_header: true
+                in_header: false
               data_generator: |
                 const details = entity.attributes.chi_tiet_ngay;
                 const data = [];
@@ -121,7 +121,23 @@ cards:
             - entity: >-
                 ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' +
                 var1}
-              name: Tổng Tiền
+              name: Tổng trước VAT
+              color: red
+              unit: đ
+              float_precision: 0
+              yaxis_id: hidden_scale
+              show:
+                in_chart: false
+                in_header: true
+              data_generator: |
+                // Lấy giá trị từ attribute
+                const val = parseFloat(entity.state);
+                // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
+                return [[new Date().getTime(), val]];
+            - entity: >-
+                ${'sensor.tongou_tong_electricity_home_thang_' + var2 + '_' +
+                var1}
+              name: Tổng sau VAT
               color: red
               type: column
               unit: đ
@@ -130,6 +146,11 @@ cards:
               show:
                 in_chart: false
                 in_header: true
+              data_generator: |
+                // Lấy giá trị từ attribute
+                const val = parseFloat(entity.attributes.tong_tien_sau_thue);
+                // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
+                return [[new Date().getTime(), val]];
           yaxis:
             - min: 0
               decimals: 0
@@ -297,7 +318,7 @@ cards:
             // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
             return [[new Date().getTime(), val]];
         - entity: ${'sensor.tongou_tong_electricity_home_nam_' + var1}
-          name: Trước VAT
+          name: Tổng trước VAT
           color: red
           unit: đ
           float_precision: 0
@@ -311,7 +332,7 @@ cards:
             // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
             return [[new Date().getTime(), val]];
         - entity: ${'sensor.tongou_tong_electricity_home_nam_' + var1}
-          name: Sau VAT
+          name: Tổng sau VAT
           color: red
           unit: đ
           float_precision: 0
