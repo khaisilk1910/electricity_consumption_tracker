@@ -1,7 +1,9 @@
 # ⚡ Electricity Consumption Tracker (Multi-Entry)
 
 Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản lý, lưu trữ và tính toán tiền điện lũy tiến Việt Nam cho nhiều thiết bị hoặc công tơ điện độc lập cùng lúc.
-<img width="1041" height="631" alt="image" src="https://github.com/user-attachments/assets/3840a481-0bf5-48ff-9a43-c64070389545" />
+<img width="1057" height="840" alt="image" src="https://github.com/user-attachments/assets/aef2bf20-99cd-4750-8dd4-ac9c342a48a5" />
+Card này vào đây: ```https://github.com/khaisilk1910/electricity_consumption_tracker/blob/main/Lovelace%20UI/Bi%E1%BB%83u%20%C4%91%E1%BB%93%20t%E1%BB%95ng%20h%E1%BB%A3p%20%C4%91%E1%BB%99ng%20ch%E1%BB%8Dn%20n%C4%83m%20th%C3%A1ng.yaml```
+
 
 
 ## Cài đặt
