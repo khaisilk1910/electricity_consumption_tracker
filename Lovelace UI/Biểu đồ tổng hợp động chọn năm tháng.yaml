@@ -137,7 +137,7 @@ cards:
                 tickAmount: 5
           apex_config:
             chart:
-              height: 180px
+              height: 200px
             plotOptions:
               bar:
                 columnWidth: 60%
@@ -173,7 +173,7 @@ cards:
           show: false
           position: top
         chart:
-          height: 250
+          height: 200
           stacked: false
         plotOptions:
           bar:
