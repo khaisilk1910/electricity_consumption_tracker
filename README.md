@@ -1,13 +1,11 @@
 # ⚡ Electricity Consumption Tracker (Multi-Entry)
 
 Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản lý, lưu trữ và tính toán tiền điện lũy tiến Việt Nam cho nhiều thiết bị hoặc công tơ điện độc lập cùng lúc.
-<img width="1049" height="879" alt="image" src="https://github.com/user-attachments/assets/3d747165-8820-4a3a-b04f-5a9a8f189c03" />
-[Card này vào đây](https://github.com/khaisilk1910/electricity_consumption_tracker/blob/main/Lovelace%20UI/Bi%E1%BB%83u%20%C4%91%E1%BB%93%20t%E1%BB%95ng%20h%E1%BB%A3p%20%C4%91%E1%BB%99ng%20ch%E1%BB%8Dn%20n%C4%83m%20th%C3%A1ng.yaml)
-
+<img width="1827" height="974" alt="image" src="https://github.com/user-attachments/assets/6baaa6f1-447a-4b12-82f8-bd09c935b413" />
+[Card này vào đây](https://github.com/khaisilk1910/electricity_consumption_tracker/tree/main/Lovelace%20UI/Bi%E1%BB%83u%20%C4%90%E1%BB%93%20Master)
 
 
 ## Cài đặt
-
 
 1. Nhấn nút bên dưới để thêm vào HACS trên Home Assistant.
 
