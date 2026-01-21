@@ -1,8 +1,8 @@
 # Hướng dẫn:
 #   1 - Vào Helpers tạo một input_text với tên : Selected Electricity Consumption Tracker
-#   2 - Copy code bên dưới cho vào file config.yaml và lưu file.
-#   3 - Vào Developer tools load lại Template Entities hoặc Khởi động lại Hass
-
+#   2 - Sửa phần dinh_nghia_ten_entity_id: > {% set list2 = ['Công tơ Bố','Công tơ Khải','Công tơ Tongou Tổng tự theo dõi'] %} với tên bạn muốn hiển thị
+#   3 - Copy code bên dưới cho vào file config.yaml và lưu file.
+#   4 - Vào Developer tools load lại Template Entities hoặc Khởi động lại Hass
 template:
   - select:
       - name: "Select Electricity Consumption Tracker"
@@ -88,8 +88,27 @@ template:
             {% set full_entity = device_entities(id_cua_entry)[0] %}
             {{ full_entity.split('.')[1].split('_electricity')[0] }}
           dinh_nghia_ten_entity_id: >
-            {% set list1 = ['EVN Bố Electricity Consumption Tracker','EVN Khải Electricity Consumption Tracker','Tongou Tổng Electricity Consumption Tracker'] %}
+            {%- set domain = 'electricity_consumption_tracker' -%}
+            {%- set entities = integration_entities(domain) -%}
+            {# Tạo list chứa các Device ID đã duyệt để tránh trùng lặp #}
+            {%- set ns = namespace(scanned_ids=[], option_names=[]) -%}
+            {%- for entity in entities -%}
+              {%- set dev_id = device_id(entity) -%}
+              {# Nếu có device_id và chưa quét qua #}
+              {%- if dev_id and dev_id not in ns.scanned_ids -%}
+                {%- set ns.scanned_ids = ns.scanned_ids + [dev_id] -%}
+                {# Lấy tên hiển thị (ưu tiên tên user đặt) #}
+                {%- set friendly_name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
+                {# Thêm vào danh sách options #}
+                {%- set ns.option_names = ns.option_names + [friendly_name] -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {# Trả về mảng JSON cho options #}
+            {% set list1 = ns.option_names %}
+  
+            {# Các bạn sửa tên muốn hiển thị ở list2 này #}
             {% set list2 = ['Công tơ Bố','Công tơ Khải','Công tơ Tongou Tổng tự theo dõi'] %}
+            
             {# Tạo dictionary map_ten: {'Tên Cũ': 'Tên Mới', ...} #}
             {% set map_ten = dict(zip(list1, list2)) %}
             {# Giá trị đầu vào #}
