@@ -2,7 +2,7 @@
   "domain": "electricity_consumption_tracker",
   "name": "Electricity Consumption Tracker",
   "version": "2026.01.19",
-  "documentation": "https://github.com/yourusername/electricity_consumption_tracker",
+  "documentation": "https://github.com/khaisilk1910/electricity_consumption_tracker",
   "dependencies": [],
   "codeowners": ["@khaisilk1910"],
   "iot_class": "local_polling",
