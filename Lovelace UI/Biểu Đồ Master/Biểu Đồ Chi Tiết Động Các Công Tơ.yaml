@@ -1,3 +1,6 @@
+# Hướng dẫn:
+#   1 - Vào Helpers tạo hai input_select input_select.tongou_electricity_bill_select_month và input_select.tongou_electricity_bill_select_year
+
 type: vertical-stack
 cards:
   - type: horizontal-stack
