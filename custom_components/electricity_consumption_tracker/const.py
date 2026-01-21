@@ -1,12 +1,33 @@
 """Constants for the Electricity Consumption Tracker integration."""
+from datetime import datetime
 
 DOMAIN = "electricity_consumption_tracker"
 CONF_SOURCE_SENSOR = "source_sensor"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_FRIENDLY_NAME = "friendly_name"
 
-# Tỷ lệ thuế VAT (8%)
-VAT_RATE = 0.08
+# Lịch sử thuế VAT
+# Format: "YYYY-MM-DD": rate (float)
+# Ví dụ 0.08 tương đương 8%, 0.10 tương đương 10%
+VAT_HISTORY = {
+    "2019-01-01": 0.10,
+    "2022-02-01": 0.08, # Nghị định 15/2022/NĐ-CP
+    "2023-01-01": 0.10, # Hết giảm thuế
+    "2023-07-01": 0.08, # Nghị định 44/2023/NĐ-CP
+    "2024-01-01": 0.08, # Tiếp tục giảm thuế
+    "2026-01-01": 0.08  # Hiện tại
+}
+
+# [HELPER] Hàm lấy VAT rate theo ngày
+def get_vat_rate(year, month, day):
+    target_date = f"{year}-{month:02d}-{day:02d}"
+    valid_dates = [d for d in VAT_HISTORY if d <= target_date]
+    if not valid_dates:
+        # Nếu ngày cũ hơn dữ liệu đầu tiên, lấy dữ liệu cũ nhất
+        return VAT_HISTORY[sorted(VAT_HISTORY.keys())[0]]
+    else:
+        # Lấy mốc thời gian gần nhất
+        return VAT_HISTORY[sorted(valid_dates)[-1]]
 
 # Biểu giá điện sinh hoạt (EVN)
 # Format: "YYYY-MM-DD": [(limit_kwh, price_vnd), ..., (float('inf'), price_vnd)]
@@ -17,5 +38,4 @@ PRICE_HISTORY = {
     "2025-05-10": [(50, 1984), (50, 2050), (100, 2380), (100, 2998), (100, 3350), (float('inf'), 3460)]
 }
 
-# Tín hiệu để cập nhật sensor sau khi nhập mới dữ liệu bằng electricity_consumption_tracker.override_data
 SIGNAL_UPDATE_SENSORS = "electricity_consumption_tracker_update_signal"
