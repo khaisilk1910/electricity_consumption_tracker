@@ -105,14 +105,13 @@ async def handle_override_global(hass: HomeAssistant, call: ServiceCall):
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the integration global components."""
     
-    # [FIX QUAN TRỌNG] Wrapper async để đảm bảo chạy trên Event Loop
     async def override_service_handler(call: ServiceCall):
         await handle_override_global(hass, call)
 
     hass.services.async_register(
         DOMAIN, 
         "override_data", 
-        override_service_handler, # Truyền hàm async def vào đây (không dùng lambda)
+        override_service_handler,
         schema=SERVICE_OVERRIDE_SCHEMA
     )
     return True
@@ -170,7 +169,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Core Update Logic
     async def update_data(now=None):
-        source_entity = entry.data[CONF_SOURCE_SENSOR]
+        # [MODIFIED] Lấy sensor từ Options nếu có, fallback về Data
+        source_entity = entry.options.get(CONF_SOURCE_SENSOR, entry.data.get(CONF_SOURCE_SENSOR))
+        
         state = hass.states.get(source_entity)
         
         current_kwh = 0.0
@@ -218,7 +219,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.async_add_executor_job(db_work_update)
         async_dispatcher_send(hass, f"{SIGNAL_UPDATE_SENSORS}_{entry.entry_id}")
 
+    # Lấy update interval (cũng ưu tiên Options)
     update_interval_hours = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, 1))
+    
     entry.async_on_unload(async_track_time_interval(hass, update_data, timedelta(hours=update_interval_hours)))
     entry.async_on_unload(async_track_time_change(hass, update_data, hour=23, minute=59, second=55))
 
@@ -226,7 +229,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     entry.async_on_unload(entry.add_update_listener(update_listener))
     
-    # Chạy update lần đầu dưới nền (background task) để không chặn khởi động
+    # Chạy update lần đầu dưới nền
     hass.async_create_task(update_data())
     
     return True
