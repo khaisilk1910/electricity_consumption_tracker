@@ -11,7 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from .const import DOMAIN, SIGNAL_UPDATE_SENSORS, VAT_RATE # [NEW] Import VAT_RATE
+from .const import DOMAIN, SIGNAL_UPDATE_SENSORS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     
     entities = []
     
-    # 1. Luôn tạo Sensor Tổng
+    # 1. Sensor Tổng
     entities.append(ConsumptionTotalSensor(db_path, f"{friendly_name} Total All Time", entry.entry_id))
 
     # 2. Quét Database (Auto-Discovery)
@@ -68,7 +68,6 @@ class ConsumptionBase(SensorEntity):
         }
 
     async def async_added_to_hass(self):
-        """Đăng ký lắng nghe sự kiện update."""
         await super().async_added_to_hass()
         self.async_on_remove(
             async_dispatcher_connect(
@@ -80,12 +79,10 @@ class ConsumptionBase(SensorEntity):
 
     @callback
     def _force_update_callback(self):
-        """Ép buộc cập nhật lại state."""
         self.async_schedule_update_ha_state(True)
 
 class ConsumptionMonthlySensor(ConsumptionBase):
     """Sensor hiển thị chi tiết Tháng."""
-    
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = "đ"
@@ -99,12 +96,15 @@ class ConsumptionMonthlySensor(ConsumptionBase):
 
     def update(self):
         if not os.path.exists(self._db_path): return
-
         try:
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            cursor.execute("SELECT thanh_tien, tong_san_luong FROM monthly_bill WHERE nam=? AND thang=?", (self._year, self._month))
+            # [MODIFIED] Lấy thêm cột thanh_tien_sau_thue, vat
+            cursor.execute("""
+                SELECT thanh_tien, tong_san_luong, thanh_tien_sau_thue, vat 
+                FROM monthly_bill WHERE nam=? AND thang=?
+            """, (self._year, self._month))
             res = cursor.fetchone()
             
             cursor.execute("SELECT ngay, san_luong FROM daily_usage WHERE nam=? AND thang=? ORDER BY ngay ASC", (self._year, self._month))
@@ -112,18 +112,18 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             conn.close()
 
             if res:
-                pre_tax = int(res[0])
-                # [UPDATE] Tính thuế VAT 8%
-                post_tax = int(pre_tax * (1 + VAT_RATE))
+                pre_tax = int(res[0]) if res[0] else 0
+                post_tax = int(res[2]) if res[2] is not None else pre_tax # Fallback nếu chưa có migration
+                vat_val = res[3] if res[3] is not None else 8
                 
                 self._attr_native_value = pre_tax
                 self._attr_extra_state_attributes = {
                     "tong_san_luong_kwh": round(res[1], 2),
                     "tong_tien_truoc_thue": pre_tax,
-                    "tong_tien_sau_thue": post_tax, # [NEW] Attribute mới
-                    "vat_rate": f"{int(VAT_RATE*100)}%",
+                    "tong_tien_sau_thue": post_tax,
+                    "vat_rate": f"{vat_val}%",
                     "chi_tiet_ngay": {f"Ngay_{r[0]}": round(r[1], 2) for r in daily_rows},
-                    "data_source": "Monthly Detail Auto Gen"
+                    "data_source": "Monthly Detail"
                 }
             else:
                 self._attr_native_value = 0
@@ -132,7 +132,6 @@ class ConsumptionMonthlySensor(ConsumptionBase):
 
 class ConsumptionYearlySensor(ConsumptionBase):
     """Sensor hiển thị chi tiết Năm."""
-    
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = "đ"
@@ -145,37 +144,43 @@ class ConsumptionYearlySensor(ConsumptionBase):
 
     def update(self):
         if not os.path.exists(self._db_path): return
-
         try:
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            cursor.execute("SELECT SUM(thanh_tien), SUM(tong_san_luong) FROM monthly_bill WHERE nam=?", (self._year,))
+            # [MODIFIED] Đọc từ bảng yearly_bill thay vì tính SUM
+            cursor.execute("""
+                SELECT tong_tien, tong_san_luong, tong_tien_sau_thue, vat 
+                FROM yearly_bill WHERE nam=?
+            """, (self._year,))
             res = cursor.fetchone()
             
-            cursor.execute("SELECT thang, tong_san_luong, thanh_tien FROM monthly_bill WHERE nam=? ORDER BY thang ASC", (self._year,))
+            # Vẫn lấy chi tiết các tháng để hiển thị attributes
+            cursor.execute("""
+                SELECT thang, tong_san_luong, thanh_tien, thanh_tien_sau_thue 
+                FROM monthly_bill WHERE nam=? ORDER BY thang ASC
+            """, (self._year,))
             month_rows = cursor.fetchall()
             conn.close()
             
-            if res and res[0] is not None:
-                pre_tax = int(res[0])
-                # [UPDATE] Tính thuế VAT 8%
-                post_tax = int(pre_tax * (1 + VAT_RATE))
+            if res:
+                pre_tax = int(res[0]) if res[0] else 0
+                post_tax = int(res[2]) if res[2] is not None else 0
+                vat_val = res[3] if res[3] is not None else 8
                 
                 self._attr_native_value = pre_tax
                 self._attr_extra_state_attributes = {
                     "tong_san_luong_nam": round(res[1], 2),
                     "tong_tien_truoc_thue": pre_tax,
-                    "tong_tien_sau_thue": post_tax, # [NEW] Attribute mới
-                    "vat_rate": f"{int(VAT_RATE*100)}%",
+                    "tong_tien_sau_thue": post_tax,
+                    "vat_rate": f"{vat_val}%",
                     "chi_tiet_cac_thang": {
                         f"Thang_{r[0]}": {
                             "san_luong_kwh": round(r[1], 2),
                             "thanh_tien_vnd": int(r[2]),
-                            "thanh_tien_sau_thue_vnd": int(r[2] * (1 + VAT_RATE)) # [NEW] Thêm vào chi tiết tháng
+                            "thanh_tien_sau_thue_vnd": int(r[3]) if r[3] else 0
                         } for r in month_rows
-                    },
-                    "data_source": "Auto Generated"
+                    }
                 }
             else:
                 self._attr_native_value = 0
@@ -184,7 +189,6 @@ class ConsumptionYearlySensor(ConsumptionBase):
 
 class ConsumptionTotalSensor(ConsumptionBase):
     """Sensor hiển thị Tổng Tích Lũy."""
-    
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = "kWh"
@@ -196,34 +200,42 @@ class ConsumptionTotalSensor(ConsumptionBase):
 
     def update(self):
         if not os.path.exists(self._db_path): return
-
         try:
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            cursor.execute("SELECT tong_san_luong, tong_so_thang FROM total_usage")
+            # [MODIFIED] Lấy các cột mới trong total_usage
+            cursor.execute("""
+                SELECT tong_san_luong, tong_so_thang, 
+                       thoi_diem_bat_dau, thoi_diem_ket_thuc, 
+                       tong_tien_tich_luy, tong_tien_tich_luy_sau_thue, vat 
+                FROM total_usage
+            """)
             res = cursor.fetchone()
             
-            cursor.execute("SELECT nam, SUM(tong_san_luong), SUM(thanh_tien) FROM monthly_bill GROUP BY nam ORDER BY nam DESC")
+            # Lấy thống kê từng năm để hiển thị attributes
+            cursor.execute("""
+                SELECT nam, tong_san_luong, tong_tien, tong_tien_sau_thue 
+                FROM yearly_bill ORDER BY nam DESC
+            """)
             years_stats = cursor.fetchall()
             conn.close()
             
             if res:
                 self._attr_native_value = round(res[0], 2)
-                grand_total_money = sum([y[2] for y in years_stats]) if years_stats else 0
-                # [UPDATE] Tính thuế
-                grand_total_post_tax = int(grand_total_money * (1 + VAT_RATE))
-
+                
                 self._attr_extra_state_attributes = {
                     "tong_so_thang_du_lieu": res[1],
-                    "tong_tien_tich_luy": int(grand_total_money),
-                    "tong_tien_tich_luy_sau_thue": grand_total_post_tax, # [NEW] Attribute mới
-                    "vat_rate": f"{int(VAT_RATE*100)}%",
+                    "thoi_diem_bat_dau": res[2],
+                    "thoi_diem_ket_thuc": res[3],
+                    "tong_tien_tich_luy": int(res[4]) if res[4] else 0,
+                    "tong_tien_tich_luy_sau_thue": int(res[5]) if res[5] else 0,
+                    "current_vat_ref": f"{res[6]}%",
                     "chi_tiet_tung_nam": {
                         f"Nam_{y[0]}": {
                             "tong_san_luong_kwh": round(y[1], 2),
                             "tong_tien_vnd": int(y[2]),
-                            "tong_tien_sau_thue_vnd": int(y[2] * (1 + VAT_RATE)) # [NEW] Thêm vào chi tiết năm
+                            "tong_tien_sau_thue_vnd": int(y[3]) if y[3] else 0
                         } for y in years_stats
                     }
                 }
