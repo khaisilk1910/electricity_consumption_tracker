@@ -7,7 +7,8 @@ override_data:
       description: "ID của Integration (Vào Settings > Integrations > Electricity Consumption Tracker > 3 chấm > Copy Entry ID)."
       required: true
       selector:
-        text:
+        config_entry:
+          integration: electricity_consumption_tracker
     date:
       name: "Ngày *"
       description: "Ngày cần ghi dữ liệu."
