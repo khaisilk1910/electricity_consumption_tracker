@@ -31,16 +31,10 @@ Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản l�
 ## ⚙️ Update thêm dữ liệu cho một ngày nào đó
 
 Vào Developer tools >> Actions( hoặc tạo Automation):
-<img width="1441" height="624" alt="image" src="https://github.com/user-attachments/assets/4c936d27-e2d0-47b5-8552-acf9ce159939" />
+<img width="1537" height="676" alt="image" src="https://github.com/user-attachments/assets/345fe6c6-2f48-4ea6-9b6a-e6e02cb4389b" />
+
 1. Tìm  `electricity_consumption_tracker.override_data`
-2. Điền các thông tin như mẫu vào `Action data`:
-   ```
-   entry_id: 01KFA1HS0EE5R2GBS1NXRSJVZN
-   date: "2026-01-19"
-   value: 25.06
-   ```
-3. Tìm `entry_id` Vào **Cài đặt (Settings)** > **Thiết bị & Dịch vụ (Devices & Services)** > **Electricity Consumption Tracker** > Copy Entry ID như ảnh dưới
-   <img width="1085" height="731" alt="image" src="https://github.com/user-attachments/assets/d67e3f5b-13e1-431d-843e-26dc5ff6f193" />
+2. Điền các thông tin như mẫu như ảnh trên và chạy
 
   
 ## ✨ Tính năng nổi bật
