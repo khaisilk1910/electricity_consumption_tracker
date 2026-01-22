@@ -3,17 +3,24 @@ override_data:
   description: "Cho phép nạp dữ liệu thủ công hoặc sửa lỗi sản lượng cho một ngày cụ thể."
   fields:
     entry_id:
-      name: "Entry ID"
-      description: "ID của data muốn cập nhật dữ liệu. Vào Settings >> Intergrations >> Electricity Consumption Tracker >> Tên Thực thể >> Ba Chấm rồi Copy Entry ID"
+      name: "Entry ID *"
+      description: "ID của Integration (Vào Settings > Integrations > Electricity Consumption Tracker > 3 chấm > Copy Entry ID)."
       required: true
-      example: "01KFA1HS0EE5R2GBS1NXRSJVZN"
+      selector:
+        text:
     date:
-      name: "Ngày"
-      description: 'Ngày cần ghi dữ liệu (YYYY-MM-DD). Nhập ngày kèm dấy nháy kép trước và sau "2026-01-18"'
+      name: "Ngày *"
+      description: "Ngày cần ghi dữ liệu."
       required: true
-      example: '"2026-01-18"'
+      selector:
+        date:
     value:
-      name: "Sản lượng kWh"
+      name: "Sản lượng (kWh) *"
       description: "Giá trị điện năng tiêu thụ muốn ghi vào."
       required: true
-      example: 15.05
+      selector:
+        number:
+          min: 0
+          mode: box
+          step: 0.01
+          unit_of_measurement: "kWh"
