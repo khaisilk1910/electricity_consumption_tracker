@@ -6,12 +6,11 @@ CONF_SOURCE_SENSOR = "source_sensor"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_FRIENDLY_NAME = "friendly_name"
 
-# [NEW] Cấu hình ngày chốt số
-CONF_BILLING_DAY = "billing_day" # Ngày chốt (ví dụ ngày 10)
-CONF_START_DATE_APPLY = "start_date_apply" # Ngày bắt đầu áp dụng cách tính mới
+# [NEW] Thêm các hằng số cho tính năng Ngày chốt số
+CONF_BILLING_DAY = "billing_day"
+CONF_START_DATE_APPLY = "start_date_apply"
 
 # Lịch sử thuế VAT
-# Format: "YYYY-MM-DD": rate (float)
 VAT_HISTORY = {
     "2019-01-01": 0.10,
     "2022-02-01": 0.08, 
@@ -21,7 +20,6 @@ VAT_HISTORY = {
     "2026-01-01": 0.08  
 }
 
-# [HELPER] Hàm lấy VAT rate theo ngày
 def get_vat_rate(year, month, day):
     target_date = f"{year}-{month:02d}-{day:02d}"
     valid_dates = [d for d in VAT_HISTORY if d <= target_date]
