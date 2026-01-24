@@ -1,5 +1,5 @@
 # Hướng dẫn:
-#   1 - Vào Helpers tạo một input_text với tên : Selected Electricity Consumption Tracker
+#   1 - Vào Helpers tạo 3 input_text với input_text.selected_electricity_consumption_tracker, input_text.selected_month_electricity, input_text.selected_year_electricity
 #   2 - Tìm code dưới đoạn dinh_nghia_ten_entity_id: và sửa {% set list2 = ['Công tơ Bố','Công tơ Khải','Công tơ Tongou Tổng tự theo dõi'] %} với tên bên trong bạn muốn hiển thị
 #   3 - Copy code bên dưới cho vào file config.yaml và lưu file.
 #   4 - Vào Developer tools load lại Template Entities hoặc Khởi động lại Hass
