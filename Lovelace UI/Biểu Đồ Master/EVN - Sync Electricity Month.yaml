@@ -1,0 +1,28 @@
+alias: EVN - Sync Electricity Shopping Month
+description: Khi đổi công tơ tự động chọn năm cuối cùng có dữ liệu hoặc năm hiện tại
+triggers:
+  - trigger: state
+    entity_id:
+      - input_text.selected_year_electricity
+    to: null
+    id: electricity_tracker_year
+conditions: []
+actions:
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 0
+      milliseconds: 200
+  - choose:
+      - conditions:
+          - condition: trigger
+            id:
+              - electricity_tracker_year
+        sequence:
+          - action: select.select_last
+            metadata: {}
+            target:
+              entity_id:
+                - select.select_electricity_month
+            data: {}
+mode: single
