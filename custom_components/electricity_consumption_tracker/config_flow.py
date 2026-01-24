@@ -3,7 +3,6 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
-import homeassistant.util.dt as dt_util # Import này quan trọng
 from .const import (
     DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, CONF_FRIENDLY_NAME,
     CONF_BILLING_DAY, CONF_START_DATE_APPLY
@@ -27,11 +26,10 @@ class ConsumptionTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_UPDATE_INTERVAL, default=1): selector.NumberSelector({
                     "min": 1, "max": 24, "step": 1, "unit_of_measurement": "giờ", "mode": "box"
                 }),
+                # Mặc định ngày 1 cho thiết lập mới
                 vol.Required(CONF_BILLING_DAY, default=1): selector.NumberSelector({
-                    "min": 1, "max": 28, "step": 1, "mode": "box"
+                    "min": 1, "max": 28, "mode": "box"
                 }),
-                # Default ngày hiện tại
-                vol.Required(CONF_START_DATE_APPLY, default=dt_util.now().strftime("%Y-%m-%d")): selector.DateSelector(),
             }),
             errors=errors
         )
@@ -55,11 +53,12 @@ class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
         current_sensor = self._config_entry.options.get(
             CONF_SOURCE_SENSOR, self._config_entry.data.get(CONF_SOURCE_SENSOR)
         )
+        # [NEW] Lấy cấu hình Billing Day
         current_billing_day = self._config_entry.options.get(
             CONF_BILLING_DAY, self._config_entry.data.get(CONF_BILLING_DAY, 1)
         )
-        current_start_date = self._config_entry.options.get(
-            CONF_START_DATE_APPLY, self._config_entry.data.get(CONF_START_DATE_APPLY, dt_util.now().strftime("%Y-%m-%d"))
+        current_apply_date = self._config_entry.options.get(
+            CONF_START_DATE_APPLY, self._config_entry.data.get(CONF_START_DATE_APPLY, "2024-01-01")
         )
 
         return self.async_show_form(
@@ -72,8 +71,8 @@ class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
                     "min": 1, "max": 24, "step": 1, "unit_of_measurement": "giờ", "mode": "box"
                 }),
                 vol.Required(CONF_BILLING_DAY, default=current_billing_day): selector.NumberSelector({
-                    "min": 1, "max": 28, "step": 1, "mode": "box"
+                    "min": 1, "max": 28, "mode": "box"
                 }),
-                vol.Required(CONF_START_DATE_APPLY, default=current_start_date): selector.DateSelector(),
+                vol.Required(CONF_START_DATE_APPLY, default=current_apply_date): selector.TextSelector(),
             })
         )
