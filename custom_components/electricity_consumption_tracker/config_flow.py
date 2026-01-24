@@ -3,7 +3,11 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
-from .const import DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, CONF_FRIENDLY_NAME
+import homeassistant.util.dt as dt_util
+from .const import (
+    DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, CONF_FRIENDLY_NAME,
+    CONF_BILLING_DAY, CONF_START_DATE_APPLY
+)
 
 class ConsumptionTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -21,12 +25,13 @@ class ConsumptionTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "domain": "sensor"
                 }),
                 vol.Required(CONF_UPDATE_INTERVAL, default=1): selector.NumberSelector({
-                    "min": 1,
-                    "max": 24,
-                    "step": 1,
-                    "unit_of_measurement": "giờ",
-                    "mode": "box"
+                    "min": 1, "max": 24, "step": 1, "unit_of_measurement": "giờ", "mode": "box"
                 }),
+                # [NEW] Default values for new setup
+                vol.Required(CONF_BILLING_DAY, default=1): selector.NumberSelector({
+                    "min": 1, "max": 28, "step": 1, "mode": "box" # Limit 28 to avoid Feb issues
+                }),
+                vol.Required(CONF_START_DATE_APPLY, default=dt_util.now().strftime("%Y-%m-%d")): selector.DateSelector(),
             }),
             errors=errors
         )
@@ -42,31 +47,35 @@ class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         if user_input is not None:
+            # Lưu ý: Khi user save options, ta cần update_listener chạy để tính lại
             return self.async_create_entry(title="", data=user_input)
 
-        # Lấy giá trị hiện tại của Update Interval
+        # Lấy giá trị hiện tại
         current_interval = self._config_entry.options.get(
             CONF_UPDATE_INTERVAL, self._config_entry.data.get(CONF_UPDATE_INTERVAL, 1)
         )
-        
-        # [NEW] Lấy giá trị hiện tại của Source Sensor
         current_sensor = self._config_entry.options.get(
             CONF_SOURCE_SENSOR, self._config_entry.data.get(CONF_SOURCE_SENSOR)
+        )
+        current_billing_day = self._config_entry.options.get(
+            CONF_BILLING_DAY, self._config_entry.data.get(CONF_BILLING_DAY, 1)
+        )
+        current_start_date = self._config_entry.options.get(
+            CONF_START_DATE_APPLY, self._config_entry.data.get(CONF_START_DATE_APPLY, dt_util.now().strftime("%Y-%m-%d"))
         )
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                # [NEW] Cho phép chọn lại Sensor nguồn
                 vol.Required(CONF_SOURCE_SENSOR, default=current_sensor): selector.EntitySelector({
                     "domain": "sensor"
                 }),
                 vol.Required(CONF_UPDATE_INTERVAL, default=current_interval): selector.NumberSelector({
-                    "min": 1,
-                    "max": 24,
-                    "step": 1,
-                    "unit_of_measurement": "giờ",
-                    "mode": "box"
+                    "min": 1, "max": 24, "step": 1, "unit_of_measurement": "giờ", "mode": "box"
                 }),
+                vol.Required(CONF_BILLING_DAY, default=current_billing_day): selector.NumberSelector({
+                    "min": 1, "max": 28, "step": 1, "mode": "box"
+                }),
+                vol.Required(CONF_START_DATE_APPLY, default=current_start_date): selector.DateSelector(),
             })
         )
