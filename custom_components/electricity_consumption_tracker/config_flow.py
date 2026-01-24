@@ -3,7 +3,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
-import homeassistant.util.dt as dt_util
+import homeassistant.util.dt as dt_util # Import này quan trọng
 from .const import (
     DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, CONF_FRIENDLY_NAME,
     CONF_BILLING_DAY, CONF_START_DATE_APPLY
@@ -27,10 +27,10 @@ class ConsumptionTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_UPDATE_INTERVAL, default=1): selector.NumberSelector({
                     "min": 1, "max": 24, "step": 1, "unit_of_measurement": "giờ", "mode": "box"
                 }),
-                # [NEW] Default values for new setup
                 vol.Required(CONF_BILLING_DAY, default=1): selector.NumberSelector({
-                    "min": 1, "max": 28, "step": 1, "mode": "box" # Limit 28 to avoid Feb issues
+                    "min": 1, "max": 28, "step": 1, "mode": "box"
                 }),
+                # Default ngày hiện tại
                 vol.Required(CONF_START_DATE_APPLY, default=dt_util.now().strftime("%Y-%m-%d")): selector.DateSelector(),
             }),
             errors=errors
@@ -47,10 +47,8 @@ class ConsumptionTrackerOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         if user_input is not None:
-            # Lưu ý: Khi user save options, ta cần update_listener chạy để tính lại
             return self.async_create_entry(title="", data=user_input)
 
-        # Lấy giá trị hiện tại
         current_interval = self._config_entry.options.get(
             CONF_UPDATE_INTERVAL, self._config_entry.data.get(CONF_UPDATE_INTERVAL, 1)
         )
