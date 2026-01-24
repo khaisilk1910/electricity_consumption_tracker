@@ -100,7 +100,6 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            # [MODIFIED] Lấy thêm cột thanh_tien_sau_thue, vat
             cursor.execute("""
                 SELECT thanh_tien, tong_san_luong, thanh_tien_sau_thue, vat 
                 FROM monthly_bill WHERE nam=? AND thang=?
@@ -113,8 +112,14 @@ class ConsumptionMonthlySensor(ConsumptionBase):
 
             if res:
                 pre_tax = int(res[0]) if res[0] else 0
-                post_tax = int(res[2]) if res[2] is not None else pre_tax # Fallback nếu chưa có migration
                 vat_val = res[3] if res[3] is not None else 8
+                
+                # [FIX] Logic fallback: Nếu DB trả về 0 nhưng có tiền trước thuế -> Tự tính
+                db_post_tax = res[2]
+                if db_post_tax and db_post_tax > 0:
+                    post_tax = int(db_post_tax)
+                else:
+                    post_tax = int(pre_tax * (1 + vat_val / 100))
                 
                 self._attr_native_value = pre_tax
                 self._attr_extra_state_attributes = {
@@ -148,14 +153,12 @@ class ConsumptionYearlySensor(ConsumptionBase):
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            # [MODIFIED] Đọc từ bảng yearly_bill thay vì tính SUM
             cursor.execute("""
                 SELECT tong_tien, tong_san_luong, tong_tien_sau_thue, vat 
                 FROM yearly_bill WHERE nam=?
             """, (self._year,))
             res = cursor.fetchone()
             
-            # Vẫn lấy chi tiết các tháng để hiển thị attributes
             cursor.execute("""
                 SELECT thang, tong_san_luong, thanh_tien, thanh_tien_sau_thue 
                 FROM monthly_bill WHERE nam=? ORDER BY thang ASC
@@ -165,8 +168,14 @@ class ConsumptionYearlySensor(ConsumptionBase):
             
             if res:
                 pre_tax = int(res[0]) if res[0] else 0
-                post_tax = int(res[2]) if res[2] is not None else 0
                 vat_val = res[3] if res[3] is not None else 8
+
+                # [FIX] Logic fallback cho Năm
+                db_post_tax = res[2]
+                if db_post_tax and db_post_tax > 0:
+                    post_tax = int(db_post_tax)
+                else:
+                    post_tax = int(pre_tax * (1 + vat_val / 100))
                 
                 self._attr_native_value = pre_tax
                 self._attr_extra_state_attributes = {
@@ -178,7 +187,7 @@ class ConsumptionYearlySensor(ConsumptionBase):
                         f"Thang_{r[0]}": {
                             "san_luong_kwh": round(r[1], 2),
                             "thanh_tien_vnd": int(r[2]),
-                            "thanh_tien_sau_thue_vnd": int(r[3]) if r[3] else 0
+                            "thanh_tien_sau_thue_vnd": int(r[3]) if r[3] and r[3] > 0 else int(r[2] * (1 + vat_val/100)) # Fallback con
                         } for r in month_rows
                     }
                 }
@@ -204,7 +213,6 @@ class ConsumptionTotalSensor(ConsumptionBase):
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            # [MODIFIED] Lấy các cột mới trong total_usage
             cursor.execute("""
                 SELECT tong_san_luong, tong_so_thang, 
                        thoi_diem_bat_dau, thoi_diem_ket_thuc, 
@@ -213,7 +221,6 @@ class ConsumptionTotalSensor(ConsumptionBase):
             """)
             res = cursor.fetchone()
             
-            # Lấy thống kê từng năm để hiển thị attributes
             cursor.execute("""
                 SELECT nam, tong_san_luong, tong_tien, tong_tien_sau_thue 
                 FROM yearly_bill ORDER BY nam DESC
@@ -224,18 +231,28 @@ class ConsumptionTotalSensor(ConsumptionBase):
             if res:
                 self._attr_native_value = round(res[0], 2)
                 
+                # [FIX] Fallback cho Tổng tích lũy
+                total_pre = int(res[4]) if res[4] else 0
+                db_total_post = res[5]
+                vat_val = res[6] if res[6] is not None else 8
+
+                if db_total_post and db_total_post > 0:
+                    total_post = int(db_total_post)
+                else:
+                    total_post = int(total_pre * (1 + vat_val / 100))
+
                 self._attr_extra_state_attributes = {
                     "tong_so_thang_du_lieu": res[1],
                     "thoi_diem_bat_dau": res[2],
                     "thoi_diem_ket_thuc": res[3],
-                    "tong_tien_tich_luy": int(res[4]) if res[4] else 0,
-                    "tong_tien_tich_luy_sau_thue": int(res[5]) if res[5] else 0,
-                    "current_vat_ref": f"{res[6]}%",
+                    "tong_tien_tich_luy": total_pre,
+                    "tong_tien_tich_luy_sau_thue": total_post,
+                    "current_vat_ref": f"{vat_val}%",
                     "chi_tiet_tung_nam": {
                         f"Nam_{y[0]}": {
                             "tong_san_luong_kwh": round(y[1], 2),
                             "tong_tien_vnd": int(y[2]),
-                            "tong_tien_sau_thue_vnd": int(y[3]) if y[3] else 0
+                            "tong_tien_sau_thue_vnd": int(y[3]) if y[3] and y[3] > 0 else int(y[2] * (1 + vat_val/100))
                         } for y in years_stats
                     }
                 }
