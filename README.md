@@ -19,9 +19,11 @@ Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản l�
   
      <img width="492" height="647" alt="image" src="https://github.com/user-attachments/assets/743ac0af-26c1-41fc-8c3c-d978ad07038a" />
   
-     Điền tên muốn lưu và chọn sensor dữ liệu theo ngày đã có để theo dõi (Lưu ý chỉ chọn sensor sản lượng Ngày)
+     Điền tên muốn lưu vào trước chữ `Electricity Home` và chọn sensor dữ liệu theo ngày đã có để theo dõi (Lưu ý chỉ chọn sensor sản lượng Ngày)
+     Thiết lập ngày bắt đầu chu kỳ và ngày bắt đầu áp dụng cho chu kỳ ở trên. Dữ liệu sẽ tự tính toán.
 
-     <img width="413" height="424" alt="image" src="https://github.com/user-attachments/assets/ed9cbe21-81bc-4a01-afa2-09956d20eb8d" />
+     <img width="526" height="740" alt="image" src="https://github.com/user-attachments/assets/9612c84c-2edb-4cf5-9458-ba78c3010811" />
+
 
 
 ## ✨ Đường dẫn
