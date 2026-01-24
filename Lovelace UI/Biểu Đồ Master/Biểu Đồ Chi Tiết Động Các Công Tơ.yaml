@@ -1,28 +1,27 @@
 # Hướng dẫn:
-#   1 - Vào Helpers tạo hai input_select input_select.tongou_electricity_bill_select_month và input_select.tongou_electricity_bill_select_year
-
+#   1 - Vào Helpers tạo hai 
 type: vertical-stack
 cards:
   - type: horizontal-stack
     cards:
-      - type: custom:mushroom-title-card
-        title: >-
-          {{
-          state_attr('sensor.selected_device_id_electricity_consumption_tracker','dinh_nghia_ten_entity_id')
-          }} 
-        subtitle: Chi tiết
       - type: custom:mushroom-select-card
         entity: select.select_electricity_consumption_tracker
         grid_options:
           columns: full
         layout: horizontal
-        name: Chọn công tơ
-        icon: mdi:counter
+        name: Công tơ
+        icon: mdi:transmission-tower-import
         fill_container: true
         icon_color: accent
         secondary_info: none
   - type: horizontal-stack
     cards:
+      - type: custom:mushroom-title-card
+        title: >-
+          📈{{
+          state_attr('sensor.selected_device_id_electricity_consumption_tracker','dinh_nghia_ten_entity_id')
+          }} 
+        alignment: start
       - type: custom:config-template-card
         variables:
           var1: >-
@@ -32,7 +31,7 @@ cards:
         card:
           type: custom:mushroom-template-card
           primary: >-
-            {{ '{:,.0f}'.format(states(entity) | float(2)) | replace('.', ',')
+            ⚡{{ '{:,.0f}'.format(states(entity) | float(2)) | replace('.', ',')
             }} kWh
           secondary: >-
             Tổng sản lượng {{ state_attr(entity, 'tong_so_thang_du_lieu') }}
@@ -44,8 +43,8 @@ cards:
           card_mod:
             style: |
               #info {
-                --tile-info-primary-font-size:30px !important;
-                --tile-info-secondary-font-size: 15px !important;
+                --tile-info-primary-font-size:20px !important;
+                --tile-info-secondary-font-size: 10px !important;
                 --tile-info-secondary-font-weight: bold !important;
                 --tile-info-primary-color: #164397 !important;
                 --tile-info-secondary-color: #164397 !important;
@@ -62,9 +61,9 @@ cards:
           type: custom:mushroom-template-card
           primary: >-
             {{ '{:,.0f}'.format(state_attr(entity, 'tong_tien_tich_luy') |
-            float(0)) | replace('.', ',') }} đ
+            float(0)) | replace('.', ',') }} đ💸
           secondary: Trước VAT (VND)
-          icon: mdi:cash-100
+          icon: ""
           features_position: bottom
           entity: ${'sensor.'+var1+'_electricity_home_total_all_time'}
           color: red
@@ -86,9 +85,10 @@ cards:
           type: custom:mushroom-template-card
           primary: >-
             {{ '{:,.0f}'.format(state_attr(entity,
-            'tong_tien_tich_luy_sau_thue') | float(0)) | replace('.', ',') }} đ
+            'tong_tien_tich_luy_sau_thue') | float(0)) | replace('.', ',') }}
+            đ💸
           secondary: Sau VAT (VND)
-          icon: mdi:cash-100
+          icon: ""
           features_position: bottom
           entity: ${'sensor.'+var1+'_electricity_home_total_all_time'}
           color: red
@@ -103,7 +103,7 @@ cards:
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-select-card
-        entity: input_select.tongou_electricity_bill_select_year
+        entity: select.select_electricity_year
         fill_container: true
         secondary_info: none
         name: Năm
@@ -111,19 +111,157 @@ cards:
         icon_color: accent
         icon_type: icon
         icon: mdi:calendar-cursor
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-select-card
+        entity: select.select_electricity_month
+        name: Tháng
+        layout: horizontal
+        secondary_info: none
+        icon_color: accent
+        icon_type: icon
+        icon: mdi:calendar-cursor-outline
+  - type: horizontal-stack
+    cards:
+      - type: custom:config-template-card
+        variables:
+          var1: states['select.select_electricity_year'].state
+          var2: states['select.select_electricity_month'].state
+          var3: >-
+            states['sensor.selected_device_id_electricity_consumption_tracker'].attributes.lay_phan_ten_entity_id
+        entities:
+          - select.select_electricity_year
+          - select.select_electricity_month
+          - sensor.selected_device_id_electricity_consumption_tracker
+        card:
+          type: custom:apexcharts-card
+          header:
+            show: true
+            title: ${'📊 Chi tiết T'+var2+'/'+var1}
+            show_states: true
+            colorize_states: true
+            standard_format: false
+          graph_span: 31d
+          span:
+            start: month
+          series:
+            - entity: >-
+                ${'sensor.' + var3 + '_electricity_home_thang_' + var2 + '_' +
+                var1}
+              type: column
+              name: Hôm nay
+              unit: kWh
+              color: "#164397"
+              float_precision: 2
+              show:
+                datalabels: false
+                extremas: true
+                in_header: false
+              data_generator: |
+                const details = entity.attributes.chi_tiet_ngay;
+                const data = [];
+                const now = new Date();
+                const currentYear = now.getFullYear();
+                const currentMonth = now.getMonth(); // 0 = Tháng 1
+
+                // Duyệt qua từng key (Ngay_1, Ngay_2...)
+                for (const [key, value] of Object.entries(details)) {
+                  if (key.startsWith('Ngay_')) {
+                    const day = parseInt(key.split('_')[1]);
+                    // Tạo timestamp cho ngày đó lúc 00:00
+                    const date = new Date(currentYear, currentMonth, day).getTime();
+                    data.push([date, value]);
+                  }
+                }
+                // Sắp xếp theo ngày tăng dần
+                return data.sort((a, b) => a[0] - b[0]);
+            - entity: >-
+                ${'sensor.' + var3 + '_electricity_home_thang_' + var2 + '_' +
+                var1}
+              name: Tổng sản lượng
+              color: "#164397"
+              type: column
+              unit: ⚡
+              yaxis_id: hidden_scale
+              show:
+                in_chart: false
+                in_header: true
+              data_generator: |
+                // Lấy giá trị từ attribute
+                const val = parseFloat(entity.attributes.tong_san_luong_kwh);
+                // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
+                return [[new Date().getTime(), val]];
+            - entity: >-
+                ${'sensor.' + var3 + '_electricity_home_thang_' + var2 + '_' +
+                var1}
+              name: Tổng trước VAT
+              color: red
+              unit: 💸
+              float_precision: 0
+              yaxis_id: hidden_scale
+              show:
+                in_chart: false
+                in_header: true
+              data_generator: |
+                // Lấy giá trị từ attribute
+                const val = parseFloat(entity.state);
+                // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
+                return [[new Date().getTime(), val]];
+            - entity: >-
+                ${'sensor.' + var3 + '_electricity_home_thang_' + var2 + '_' +
+                var1}
+              name: Tổng sau VAT
+              color: red
+              type: column
+              unit: 💸
+              float_precision: 0
+              yaxis_id: hidden_scale
+              show:
+                in_chart: false
+                in_header: true
+              data_generator: |
+                // Lấy giá trị từ attribute
+                const val = parseFloat(entity.attributes.tong_tien_sau_thue);
+                // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
+                return [[new Date().getTime(), val]];
+          yaxis:
+            - min: 0
+              decimals: 0
+              apex_config:
+                tickAmount: 5
+                labels:
+                  show: true
+                  style:
+                    colors: "#164397"
+                forceNiceScale: true
+          apex_config:
+            chart:
+              height: 200px
+            plotOptions:
+              bar:
+                columnWidth: 60%
+                borderRadius: 2
+            xaxis:
+              tooltip:
+                enabled: false
+              labels:
+                format: dd/MM
+            tooltip:
+              x:
+                format: dd
   - type: custom:config-template-card
     variables:
-      var1: states['input_select.tongou_electricity_bill_select_year'].state
+      var1: states['select.select_electricity_year'].state
       var3: >-
         states['sensor.selected_device_id_electricity_consumption_tracker'].attributes.lay_phan_ten_entity_id
     entities:
-      - input_select.tongou_electricity_bill_select_year
+      - select.select_electricity_year
       - sensor.selected_device_id_electricity_consumption_tracker
     card:
       type: custom:apexcharts-card
       header:
         show: true
-        title: ${'Thống kê ' + var1}
+        title: ${'📊 Thống kê ' + var1}
         show_states: true
         colorize_states: true
       graph_span: 1y
@@ -250,7 +388,7 @@ cards:
         - entity: ${'sensor.' + var3 + '_electricity_home_nam_' + var1}
           name: Tổng Sản lượng
           color: "#164397"
-          unit: kWh
+          unit: ⚡
           yaxis_id: hidden_scale
           show:
             in_chart: false
@@ -263,7 +401,7 @@ cards:
         - entity: ${'sensor.' + var3 + '_electricity_home_nam_' + var1}
           name: Tổng trước VAT
           color: red
-          unit: đ
+          unit: 💸
           float_precision: 0
           yaxis_id: hidden_scale
           show:
@@ -277,7 +415,7 @@ cards:
         - entity: ${'sensor.' + var3 + '_electricity_home_nam_' + var1}
           name: Tổng sau VAT
           color: red
-          unit: đ
+          unit: 💸
           float_precision: 0
           yaxis_id: hidden_scale
           show:
@@ -290,143 +428,6 @@ cards:
             return [[new Date().getTime(), val]];
     grid_options:
       columns: full
-  - type: horizontal-stack
-    cards:
-      - type: custom:mushroom-select-card
-        entity: input_select.tongou_electricity_bill_select_month
-        name: Tháng
-        layout: horizontal
-        secondary_info: none
-        icon_color: accent
-        icon_type: icon
-        icon: mdi:calendar-cursor-outline
-  - type: horizontal-stack
-    cards:
-      - type: custom:config-template-card
-        variables:
-          var1: states['input_select.tongou_electricity_bill_select_year'].state
-          var2: states['input_select.tongou_electricity_bill_select_month'].state
-          var3: >-
-            states['sensor.selected_device_id_electricity_consumption_tracker'].attributes.lay_phan_ten_entity_id
-        entities:
-          - input_select.tongou_electricity_bill_select_year
-          - input_select.tongou_electricity_bill_select_month
-          - sensor.selected_device_id_electricity_consumption_tracker
-        card:
-          type: custom:apexcharts-card
-          header:
-            show: true
-            title: ${'Chi tiết T'+var2+'/'+var1}
-            show_states: true
-            colorize_states: true
-            standard_format: false
-          graph_span: 31d
-          span:
-            start: month
-          series:
-            - entity: >-
-                ${'sensor.' + var3 + '_electricity_home_thang_' + var2 + '_' +
-                var1}
-              type: column
-              name: Hôm nay
-              unit: kWh
-              color: "#164397"
-              float_precision: 2
-              show:
-                datalabels: false
-                extremas: true
-                in_header: false
-              data_generator: |
-                const details = entity.attributes.chi_tiet_ngay;
-                const data = [];
-                const now = new Date();
-                const currentYear = now.getFullYear();
-                const currentMonth = now.getMonth(); // 0 = Tháng 1
-
-                // Duyệt qua từng key (Ngay_1, Ngay_2...)
-                for (const [key, value] of Object.entries(details)) {
-                  if (key.startsWith('Ngay_')) {
-                    const day = parseInt(key.split('_')[1]);
-                    // Tạo timestamp cho ngày đó lúc 00:00
-                    const date = new Date(currentYear, currentMonth, day).getTime();
-                    data.push([date, value]);
-                  }
-                }
-                // Sắp xếp theo ngày tăng dần
-                return data.sort((a, b) => a[0] - b[0]);
-            - entity: >-
-                ${'sensor.' + var3 + '_electricity_home_thang_' + var2 + '_' +
-                var1}
-              name: Tổng sản lượng
-              color: "#164397"
-              type: column
-              unit: kWh
-              yaxis_id: hidden_scale
-              show:
-                in_chart: false
-                in_header: true
-              data_generator: |
-                // Lấy giá trị từ attribute
-                const val = parseFloat(entity.attributes.tong_san_luong_kwh);
-                // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
-                return [[new Date().getTime(), val]];
-            - entity: >-
-                ${'sensor.' + var3 + '_electricity_home_thang_' + var2 + '_' +
-                var1}
-              name: Tổng trước VAT
-              color: red
-              unit: đ
-              float_precision: 0
-              yaxis_id: hidden_scale
-              show:
-                in_chart: false
-                in_header: true
-              data_generator: |
-                // Lấy giá trị từ attribute
-                const val = parseFloat(entity.state);
-                // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
-                return [[new Date().getTime(), val]];
-            - entity: >-
-                ${'sensor.' + var3 + '_electricity_home_thang_' + var2 + '_' +
-                var1}
-              name: Tổng sau VAT
-              color: red
-              type: column
-              unit: đ
-              float_precision: 0
-              yaxis_id: hidden_scale
-              show:
-                in_chart: false
-                in_header: true
-              data_generator: |
-                // Lấy giá trị từ attribute
-                const val = parseFloat(entity.attributes.tong_tien_sau_thue);
-                // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
-                return [[new Date().getTime(), val]];
-          yaxis:
-            - min: 0
-              decimals: 0
-              apex_config:
-                tickAmount: 5
-                labels:
-                  show: true
-                  style:
-                    colors: "#164397"
-                forceNiceScale: true
-          apex_config:
-            chart:
-              height: 200px
-            plotOptions:
-              bar:
-                columnWidth: 60%
-                borderRadius: 2
-            xaxis:
-              tooltip:
-                enabled: false
-              labels:
-                format: dd/MM
-            tooltip:
-              x:
-                format: dd
 grid_options:
   columns: full
+
