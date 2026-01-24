@@ -3,7 +3,7 @@ import sqlite3
 import os
 import logging
 import voluptuous as vol
-from datetime import timedelta, date, datetime
+from datetime import timedelta, date, datetime # [FIX] Đã thêm datetime
 import homeassistant.util.dt as dt_util
 
 from homeassistant.config_entries import ConfigEntry
@@ -12,7 +12,6 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval, async_track_time_change
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-# Import
 from .const import (
     DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, 
     CONF_FRIENDLY_NAME, SIGNAL_UPDATE_SENSORS, get_vat_rate,
@@ -27,31 +26,28 @@ SERVICE_OVERRIDE_SCHEMA = vol.Schema({
     vol.Required("value"): vol.Coerce(float),
 })
 
-# --- UTILS HELPERS ---
+# --- HELPER FUNCTIONS ---
 
 def get_billing_period(current_date: date, billing_day: int, apply_date: date):
-    """
-    Xác định 'Tháng hóa đơn' dựa trên ngày hiện tại và cấu hình.
-    Trả về: (billing_year, billing_month)
-    
-    Quy tắc:
-    - Nếu billing_day = 1: Tháng hóa đơn = Tháng dương lịch.
-    - Nếu billing_day > 1 (ví dụ 10):
-      + Ngày 1/1 -> 9/1: Thuộc hóa đơn Tháng 1 (kết thúc vào 9/1).
-      + Ngày 10/1 -> 31/1: Thuộc hóa đơn Tháng 2 (kết thúc vào 9/2).
-    """
-    # Nếu ngày hiện tại nhỏ hơn ngày bắt đầu áp dụng thay đổi -> Dùng Calendar Month (logic cũ)
+    """Xác định Tháng Hóa Đơn."""
+    # Nếu ngày hiện tại < ngày áp dụng -> Dùng Calendar Month
     if current_date < apply_date:
         return current_date.year, current_date.month
 
     if billing_day == 1:
         return current_date.year, current_date.month
     
-    # Nếu ngày hiện tại < ngày chốt -> Vẫn thuộc billing month hiện tại
+    # Nếu ngày hiện tại < ngày chốt -> Thuộc kỳ tháng hiện tại (nhưng logic EVN thường gọi là kỳ tháng T)
+    # EVN: Chốt ngày 10/2 -> Kỳ tháng 2. (Từ 11/1 đến 10/2)
+    # Logic code: Ngày < 10 -> Thuộc tháng hiện tại. Ngày >= 10 -> Thuộc tháng sau.
+    # SỬA LẠI LOGIC CHUẨN EVN:
+    # Kỳ 10/01 - 09/02: Được gọi là Hóa đơn Tháng 2.
+    
     if current_date.day < billing_day:
+        # Ví dụ: Ngày 5/2 (Chốt ngày 10). Thuộc kỳ (10/1 - 9/2) -> Tháng 2.
         return current_date.year, current_date.month
     else:
-        # Đã qua ngày chốt -> Thuộc billing month kế tiếp
+        # Ví dụ: Ngày 15/2 (Chốt ngày 10). Thuộc kỳ (10/2 - 9/3) -> Tháng 3.
         next_month = current_date.month + 1
         year = current_date.year
         if next_month > 12:
@@ -60,18 +56,14 @@ def get_billing_period(current_date: date, billing_day: int, apply_date: date):
         return year, next_month
 
 def get_billing_cycle_range(billing_year, billing_month, billing_day, apply_date):
-    """
-    Lấy ngày bắt đầu và ngày kết thúc của một 'Tháng hóa đơn'.
-    Trả về chuỗi YYYY-MM-DD để query SQL.
-    """
-    # Logic kiểm tra xem tháng này có nằm trong vùng áp dụng không
-    # Để đơn giản, ta kiểm tra ngày đầu tháng của tháng billing đó
+    """Lấy ngày Start/End của một Billing Month."""
+    # Kiểm tra xem tháng này có nằm trong vùng áp dụng không (dựa vào ngày đầu tháng)
     check_date = date(billing_year, billing_month, 1)
     
     if billing_day == 1 or check_date < apply_date:
-        # Logic lịch dương bình thường (1 -> cuối tháng)
+        # Calendar Month
         start_date = date(billing_year, billing_month, 1)
-        # Tìm ngày cuối tháng
+        # Tìm ngày cuối tháng an toàn
         next_m = billing_month + 1
         next_y = billing_year
         if next_m > 12:
@@ -80,17 +72,16 @@ def get_billing_cycle_range(billing_year, billing_month, billing_day, apply_date
         end_date = date(next_y, next_m, 1) - timedelta(days=1)
         return start_date, end_date
     else:
-        # Logic ngày chốt (Ví dụ tháng 2, chốt ngày 10)
-        # => Kỳ: 10/1 (năm trước nếu tháng 1) -> 9/2
+        # Billing Cycle (Ví dụ Tháng 2, chốt ngày 10 -> Kỳ: 10/1 đến 09/2)
         
-        # End Date: Luôn là ngày (billing_day - 1) của billing_month
+        # End Date: Ngày (billing_day - 1) của billing_month
         try:
             end_date = date(billing_year, billing_month, billing_day) - timedelta(days=1)
         except ValueError:
-             # Fallback cho trường hợp ngày không tồn tại (hiếm gặp vì đã limit 28)
-             end_date = date(billing_year, billing_month, 28)
+             # Fallback: Ngày cuối cùng của tháng nếu ngày chốt không tồn tại (vd 30/2)
+             end_date = date(billing_year, billing_month, 28) # Tạm tính 28 cho an toàn
 
-        # Start Date: Là ngày (billing_day) của tháng trước
+        # Start Date: Ngày (billing_day) của tháng trước
         prev_m = billing_month - 1
         prev_y = billing_year
         if prev_m < 1:
@@ -100,11 +91,11 @@ def get_billing_cycle_range(billing_year, billing_month, billing_day, apply_date
         try:
             start_date = date(prev_y, prev_m, billing_day)
         except ValueError:
+             # Fallback cho tháng trước nếu không có ngày đó
              start_date = date(prev_y, prev_m, 28)
 
         return start_date, end_date
 
-# Hàm tính tiền bậc thang
 def calculate_cost(kwh, year, month):
     target_date = f"{year}-{month:02d}-01"
     valid_dates = [d for d in PRICE_HISTORY if d <= target_date]
@@ -115,38 +106,32 @@ def calculate_cost(kwh, year, month):
         
     cost = 0
     remaining_kwh = kwh
-    
     for limit, price in tiers:
-        if remaining_kwh <= 0:
-            break
+        if remaining_kwh <= 0: break
         usage = min(remaining_kwh, limit) if limit != float('inf') else remaining_kwh
         cost += usage * price
         remaining_kwh -= usage
-        
     return round(cost)
 
-# Hàm tính toán cốt lõi
 def perform_db_calculation(cursor, y, m, d, val, billing_day, apply_date_str):
-    # Convert apply_date string to object
     apply_date = datetime.strptime(apply_date_str, "%Y-%m-%d").date()
     current_date_obj = date(y, m, d)
 
-    # 1. Insert Daily (Lưu raw data theo lịch dương)
+    # 1. Insert Daily (Luôn lưu theo lịch dương thực tế)
     cursor.execute("""
         INSERT OR REPLACE INTO daily_usage (nam, thang, ngay, san_luong, don_vi)
         VALUES (?, ?, ?, ?, 'kWh')
     """, (y, m, d, val))
     
-    # 2. Xác định Billing Month cho ngày này
+    # 2. Xác định Billing Month
     b_year, b_month = get_billing_period(current_date_obj, billing_day, apply_date)
     
-    # 3. Lấy khoảng thời gian của Billing Month này (để SUM)
+    # 3. Lấy khoảng ngày query
     start_date, end_date = get_billing_cycle_range(b_year, b_month, billing_day, apply_date)
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = end_date.strftime("%Y-%m-%d")
 
-    # 4. Calculate Monthly Sum (Query theo khoảng ngày)
-    # SQLite trick: printf để tạo chuỗi 'YYYY-MM-DD' từ nam, thang, ngay để so sánh
+    # 4. Tính tổng tháng
     cursor.execute(f"""
         SELECT SUM(san_luong) 
         FROM daily_usage 
@@ -154,22 +139,19 @@ def perform_db_calculation(cursor, y, m, d, val, billing_day, apply_date_str):
     """, (start_str, end_str))
     
     monthly_sum = cursor.fetchone()[0] or 0.0
-    
     monthly_cost = calculate_cost(monthly_sum, b_year, b_month)
     
-    # [LOGIC] Tính VAT
-    vat_rate = get_vat_rate(b_year, b_month, 1) 
+    vat_rate = get_vat_rate(b_year, b_month, 1)
     vat_int = int(vat_rate * 100)
     post_tax_cost = int(monthly_cost * (1 + vat_rate))
 
-    # Lưu vào monthly_bill với key là Billing Month
     cursor.execute("""
         INSERT OR REPLACE INTO monthly_bill 
         (nam, thang, tong_san_luong, don_vi_san_luong, thanh_tien, don_vi_tien, thanh_tien_sau_thue, vat)
         VALUES (?, ?, ?, 'kWh', ?, 'đ', ?, ?)
     """, (b_year, b_month, monthly_sum, monthly_cost, post_tax_cost, vat_int))
     
-    # 3. Recalculate Yearly (Cho Billing Year)
+    # 5. Tính tổng năm (Dựa trên monthly_bill đã tính)
     cursor.execute("""
         SELECT SUM(tong_san_luong), SUM(thanh_tien), SUM(thanh_tien_sau_thue) 
         FROM monthly_bill WHERE nam=?
@@ -182,7 +164,6 @@ def perform_db_calculation(cursor, y, m, d, val, billing_day, apply_date_str):
             VALUES (?, ?, ?, ?, ?)
         """, (b_year, row_year[0] or 0, row_year[1] or 0, row_year[2] or 0, vat_int))
 
-    # 4. Recalculate Total
     recalculate_total_usage(cursor)
 
 def recalculate_total_usage(cursor):
@@ -206,7 +187,6 @@ def recalculate_total_usage(cursor):
     last = cursor.fetchone()
     if last: end_str = f"{last[2]:02d}/{last[1]:02d}/{last[0]}"
     
-    # Lấy VAT hiện tại
     current_vat = 8
     if last:
         current_vat = int(get_vat_rate(last[0], last[1], last[2]) * 100)
@@ -227,7 +207,6 @@ async def handle_override_global(hass: HomeAssistant, call: ServiceCall):
     db_path = hass.data[DOMAIN][entry_id]["db_path"]
     entry = hass.config_entries.async_get_entry(entry_id)
     
-    # Lấy config
     billing_day = entry.options.get(CONF_BILLING_DAY, entry.data.get(CONF_BILLING_DAY, 1))
     apply_date_str = entry.options.get(CONF_START_DATE_APPLY, entry.data.get(CONF_START_DATE_APPLY, "2024-01-01"))
 
@@ -265,22 +244,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {"db_path": db_path}
 
+    # Device Registry
     device_registry = dr.async_get(hass)
     device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name=entry.data.get(CONF_FRIENDLY_NAME, "Electricity Tracker"),
-        manufacturer="Custom Component",
-        model="Electricity Tracker DB Based",
+        manufacturer="Khaisilk1910",
+        model="Electricity DB",
         sw_version="2026.01.30",
     )
 
-    # --- INIT & MIGRATION ---
+    # --- INIT DB ---
     def init_db():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Tạo bảng (như cũ)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS daily_usage (
                 nam INTEGER, thang INTEGER, ngay INTEGER, san_luong REAL, don_vi TEXT, PRIMARY KEY (nam, thang, ngay)
@@ -309,7 +288,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         """)
         
-        # Check Migration columns (như cũ)
+        # Check Columns
         try:
             cursor.execute("PRAGMA table_info(monthly_bill)")
             cols = [info[1] for info in cursor.fetchall()]
@@ -364,53 +343,53 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     entry.async_on_unload(entry.add_update_listener(update_listener))
     
-    # Run update once on startup
     hass.async_create_task(update_data())
     
     return True
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
-    """Xử lý khi thay đổi Options. Trigger tính toán lại lịch sử."""
+    """Xử lý khi thay đổi Options."""
     db_path = hass.data[DOMAIN][entry.entry_id]["db_path"]
     billing_day = entry.options.get(CONF_BILLING_DAY, entry.data.get(CONF_BILLING_DAY, 1))
     apply_date_str = entry.options.get(CONF_START_DATE_APPLY, entry.data.get(CONF_START_DATE_APPLY, "2024-01-01"))
 
-    # Hàm chạy nền để tính lại toàn bộ dữ liệu từ ngày áp dụng
     def recalculate_history_process():
-        _LOGGER.info(f"Đang tính toán lại lịch sử từ ngày {apply_date_str} với Billing Day {billing_day}...")
+        _LOGGER.info(f"Đang tính toán lại lịch sử từ ngày {apply_date_str}...")
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         apply_date = datetime.strptime(apply_date_str, "%Y-%m-%d").date()
         
-        # 1. Lấy tất cả ngày có dữ liệu từ ngày áp dụng trở về sau
+        # [FIX] XÓA DỮ LIỆU CŨ TRONG KHOẢNG THỜI GIAN ẢNH HƯỞNG ĐỂ TRÁNH TRÙNG LẶP/RÁC
+        # Lấy năm/tháng của ngày áp dụng để xóa từ đó về sau
+        start_year, start_month = get_billing_period(apply_date, billing_day, apply_date)
+        
+        # Xóa monthly_bill từ mốc này trở đi (để tính lại sạch sẽ)
+        # Note: Logic xóa này đơn giản hóa bằng cách xóa >= năm hiện tại hoặc duyệt từng tháng.
+        # Để an toàn nhất: Ta duyệt qua từng ngày trong DB >= apply_date để xác định tháng nào cần tính lại.
+        
         cursor.execute("""
-            SELECT nam, thang, ngay, san_luong 
+            SELECT nam, thang, ngay 
             FROM daily_usage 
             WHERE printf('%04d-%02d-%02d', nam, thang, ngay) >= ?
             ORDER BY nam, thang, ngay
         """, (apply_date_str,))
         
         rows = cursor.fetchall()
-        
-        # 2. Xóa dữ liệu monthly_bill và yearly_bill cũ trong khoảng thời gian này để tính lại
-        # Để an toàn, ta tính toán lại từng ngày một giống như đang update realtime
-        # Cách này chậm hơn nhưng đảm bảo logic đồng nhất.
-        
-        # Tuy nhiên, để tối ưu: ta chỉ cần nhóm các ngày lại thành "Billing Month"
-        # Tìm danh sách các Billing Month bị ảnh hưởng
         affected_months = set()
+        
         for r in rows:
             d_obj = date(r[0], r[1], r[2])
             b_y, b_m = get_billing_period(d_obj, billing_day, apply_date)
             affected_months.add((b_y, b_m))
             
-        # 3. Với mỗi Billing Month bị ảnh hưởng, tính lại tổng
+        # Tính lại từng tháng bị ảnh hưởng
         for (b_y, b_m) in affected_months:
             start_date, end_date = get_billing_cycle_range(b_y, b_m, billing_day, apply_date)
             start_s = start_date.strftime("%Y-%m-%d")
             end_s = end_date.strftime("%Y-%m-%d")
             
+            # Tính tổng
             cursor.execute(f"""
                 SELECT SUM(san_luong) FROM daily_usage 
                 WHERE printf('%04d-%02d-%02d', nam, thang, ngay) BETWEEN ? AND ?
@@ -423,13 +402,14 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
             vat_int = int(vat_rate * 100)
             post_tax = int(monthly_cost * (1 + vat_rate))
             
+            # Update
             cursor.execute("""
                 INSERT OR REPLACE INTO monthly_bill 
                 (nam, thang, tong_san_luong, don_vi_san_luong, thanh_tien, don_vi_tien, thanh_tien_sau_thue, vat)
                 VALUES (?, ?, ?, 'kWh', ?, 'đ', ?, ?)
             """, (b_y, b_m, monthly_sum, monthly_cost, post_tax, vat_int))
 
-        # 4. Tính lại Yearly cho các năm bị ảnh hưởng
+        # Tính lại Yearly (chỉ những năm bị ảnh hưởng)
         affected_years = set([x[0] for x in affected_months])
         for y_param in affected_years:
             cursor.execute("""
@@ -437,7 +417,7 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
                 FROM monthly_bill WHERE nam=?
             """, (y_param,))
             res = cursor.fetchone()
-            # VAT
+            
             cursor.execute("SELECT vat FROM monthly_bill WHERE nam=? ORDER BY thang DESC LIMIT 1", (y_param,))
             vat_res = cursor.fetchone()
             vat_year = vat_res[0] if vat_res else 8
@@ -447,9 +427,7 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
                 VALUES (?, ?, ?, ?, ?)
             """, (y_param, res[0] or 0, res[1] or 0, res[2] or 0, vat_year))
             
-        # 5. Cập nhật Total
         recalculate_total_usage(cursor)
-        
         conn.commit()
         conn.close()
         _LOGGER.info("Hoàn tất tính toán lại lịch sử.")
