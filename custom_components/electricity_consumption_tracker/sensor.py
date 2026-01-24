@@ -16,7 +16,6 @@ from .const import DOMAIN, SIGNAL_UPDATE_SENSORS
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
-    """Set up the sensor platform."""
     db_path = hass.data[DOMAIN][entry.entry_id]["db_path"]
     friendly_name = entry.data.get("friendly_name", "Electricity")
     
@@ -65,7 +64,7 @@ class ElectricitySensorManager:
                 found_months = [(r[0], r[1]) for r in cursor.fetchall()]
                 conn.close()
             except Exception as e:
-                _LOGGER.error(f"Lỗi quét DB: {e}")
+                pass
             return found_years, found_months
 
         years, months = await self.hass.async_add_executor_job(get_existing_periods)
@@ -128,7 +127,6 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
-            # [CHANGE] Đọc thêm ngay_bat_dau, ngay_ket_thuc từ DB
             cursor.execute("""
                 SELECT thanh_tien, tong_san_luong, thanh_tien_sau_thue, vat, ngay_bat_dau, ngay_ket_thuc
                 FROM monthly_bill WHERE nam=? AND thang=?
@@ -140,11 +138,11 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             end_date_str = "N/A"
 
             if res:
-                # Nếu DB đã có lưu ngày bắt đầu/kết thúc (từ code mới), dùng nó để query
-                start_date_str = res[4]
-                end_date_str = res[5]
+                # [FIX] Handle trường hợp NULL nếu migration chưa kịp chạy
+                start_date_str = res[4] if res[4] else "N/A"
+                end_date_str = res[5] if res[5] else "N/A"
                 
-                if start_date_str and end_date_str:
+                if start_date_str != "N/A" and end_date_str != "N/A":
                     cursor.execute(f"""
                         SELECT ngay, san_luong 
                         FROM daily_usage 
@@ -152,7 +150,6 @@ class ConsumptionMonthlySensor(ConsumptionBase):
                         ORDER BY nam, thang, ngay ASC
                     """, (start_date_str, end_date_str))
                 else:
-                    # Fallback cho dữ liệu cũ chưa có ngày lưu
                     cursor.execute("SELECT ngay, san_luong FROM daily_usage WHERE nam=? AND thang=? ORDER BY ngay ASC", (self._year, self._month))
                 
                 daily_rows = cursor.fetchall()
@@ -277,4 +274,29 @@ class ConsumptionTotalSensor(ConsumptionBase):
                 
                 total_pre = int(res[4]) if res[4] else 0
                 db_total_post = res[5]
-                vat_val =
+                vat_val = res[6] if res[6] is not None else 8
+
+                if db_total_post and db_total_post > 0:
+                    total_post = int(db_total_post)
+                else:
+                    total_post = int(total_pre * (1 + vat_val / 100))
+
+                self._attr_extra_state_attributes = {
+                    "tong_so_thang_du_lieu": res[1],
+                    "thoi_diem_bat_dau": res[2],
+                    "thoi_diem_ket_thuc": res[3],
+                    "tong_tien_tich_luy": total_pre,
+                    "tong_tien_tich_luy_sau_thue": total_post,
+                    "current_vat_ref": f"{vat_val}%",
+                    "chi_tiet_tung_nam": {
+                        f"Nam_{y[0]}": {
+                            "tong_san_luong_kwh": round(y[1], 2),
+                            "tong_tien_vnd": int(y[2]),
+                            "tong_tien_sau_thue_vnd": int(y[3]) if y[3] and y[3] > 0 else int(y[2] * (1 + (y[4] or 8)/100))
+                        } for y in years_stats
+                    }
+                }
+            else:
+                self._attr_native_value = 0
+        except Exception as e:
+            _LOGGER.error(f"Update error total: {e}")
