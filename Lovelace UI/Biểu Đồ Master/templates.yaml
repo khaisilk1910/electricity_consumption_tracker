@@ -5,48 +5,198 @@
 #   4 - Vào Developer tools load lại Template Entities hoặc Khởi động lại Hass
 template:
   - select:
-      - name: "Select Electricity Consumption Tracker"
-        unique_id: select_electricity_consumption_tracker_dynamic
-        icon: mdi:format-list-numbered
-        # 1. State: Hiển thị giá trị hiện tại đang lưu trong input_text
-        state: "{{ states('input_text.selected_electricity_consumption_tracker') }}"
-        # 2. Options: Dùng Jinja để tạo danh sách tên các entry tự động
-        options: >
-          {%- set domain = 'electricity_consumption_tracker' -%}
-          {%- set entities = integration_entities(domain) -%}
-          {# Tạo list chứa các Device ID đã duyệt để tránh trùng lặp #}
-          {%- set ns = namespace(scanned_ids=[], option_names=[]) -%}
-          
-          {%- for entity in entities -%}
-            {%- set dev_id = device_id(entity) -%}
-            {# Nếu có device_id và chưa quét qua #}
-            {%- if dev_id and dev_id not in ns.scanned_ids -%}
-              {%- set ns.scanned_ids = ns.scanned_ids + [dev_id] -%}
-              
-              {# Lấy tên hiển thị (ưu tiên tên user đặt) #}
-              {%- set friendly_name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
-              
-              {# Thêm vào danh sách options #}
-              {%- set ns.option_names = ns.option_names + [friendly_name] -%}
-            {%- endif -%}
-          {%- endfor -%}
-          
-          {# Trả về mảng JSON cho options #}
-          {{ ns.option_names }}
+#Sử dụng cho Electricity Consumption Tracker
+    - name: "Select Electricity Consumption Tracker"
+      unique_id: select_electricity_consumption_tracker_dynamic
+      icon: mdi:format-list-numbered
+      # 1. State: Hiển thị giá trị hiện tại đang lưu trong input_text
+      state: "{{ states('input_text.selected_electricity_consumption_tracker') }}"
+      # 2. Options: Dùng Jinja để tạo danh sách tên các entry tự động
+      options: >
+        {%- set domain = 'electricity_consumption_tracker' -%}
+        {%- set entities = integration_entities(domain) -%}
+        {# Tạo list chứa các Device ID đã duyệt để tránh trùng lặp #}
+        {%- set ns = namespace(scanned_ids=[], option_names=[]) -%}
+        
+        {%- for entity in entities -%}
+          {%- set dev_id = device_id(entity) -%}
+          {# Nếu có device_id và chưa quét qua #}
+          {%- if dev_id and dev_id not in ns.scanned_ids -%}
+            {%- set ns.scanned_ids = ns.scanned_ids + [dev_id] -%}
+            
+            {# Lấy tên hiển thị (ưu tiên tên user đặt) #}
+            {%- set friendly_name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
+            
+            {# Thêm vào danh sách options #}
+            {%- set ns.option_names = ns.option_names + [friendly_name] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        
+        {# Trả về mảng JSON cho options #}
+        {{ ns.option_names }}
 
-        # 3. Action: Khi người dùng chọn, lưu tên đó vào input_text
-        select_option:
-          - action: input_text.set_value
-            target:
-              entity_id: input_text.selected_electricity_consumption_tracker
-            data:
-              value: "{{ option }}"
+      # 3. Action: Khi người dùng chọn, lưu tên đó vào input_text
+      select_option:
+        - action: input_text.set_value
+          target:
+            entity_id: input_text.selected_electricity_consumption_tracker
+          data:
+            value: "{{ option }}"
+
+    # --- SELECT 1: CHỌN NĂM ---
+    - name: "Select Electricity Year"
+      unique_id: select_electricity_year_dynamic
+      icon: mdi:calendar-cursor-outline
+      # State: Lấy giá trị từ input_text helper
+      state: "{{ states('input_text.selected_year_electricity') }}"
+      # Options: Tạo danh sách năm tự động
+      options: >
+        {# Template tìm Device ID dựa trên Tên đang lưu trong Input Text #}
+        {%- set selected_name = states('input_text.selected_electricity_consumption_tracker') -%}
+        {%- set domain = 'electricity_consumption_tracker' -%}
+        {# Lấy danh sách device ID #}
+        {%- set entities = integration_entities(domain) -%}
+        {%- set ns = namespace(found_id=none) -%}
+        {%- for entity in entities -%}
+          {# Chỉ tìm nếu chưa thấy kết quả #}
+          {%- if ns.found_id is none -%}
+            {%- set dev_id = device_id(entity) -%}
+            {%- set name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
+            {# So sánh tên #}
+            {%- if name == selected_name -%}
+              {%- set ns.found_id = dev_id -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {% set chon_electricity_home_total_all_time = device_entities(ns.found_id)[0] -%}
+
+        {%- set sensor_id = chon_electricity_home_total_all_time -%}
+        {%- set start_str = state_attr(sensor_id, 'thoi_diem_bat_dau') -%}
+        {%- set end_str = state_attr(sensor_id, 'thoi_diem_ket_thuc') -%}
+
+        {%- if start_str and end_str %}
+          {# Parse ngày tháng #}
+          {%- set start = strptime(start_str, '%d/%m/%Y') -%}
+          {%- set end = strptime(end_str, '%d/%m/%Y') -%}
+          {# Tạo range năm và trả về list #}
+          {{ range(start.year, end.year + 1) | map('string') | list }}
+        {%- else -%}
+          {# Giá trị mặc định nếu sensor chưa load #}
+          {{[now().year | string]}}
+        {%- endif -%}
+      
+      # Action khi người dùng chọn option: Lưu vào input_text
+      select_option:
+        - service: input_text.set_value
+          target:
+            entity_id: input_text.selected_year_electricity
+          data:
+            value: "{{ option }}"
+
+    # --- SELECT 2: CHỌN THÁNG (Phụ thuộc vào Năm đã chọn) ---
+    - name: "Select Electricity Month"
+      unique_id: select_electricity_month_dynamic
+      icon: mdi:calendar-month
+      # State: Vẫn lưu/lấy từ input_text
+      state: "{{ states('input_text.selected_month_electricity') }}"
+      # Options: Logic lọc tháng theo năm
+      options: >
+        {# Template tìm Device ID dựa trên Tên đang lưu trong Input Text #}
+        {%- set selected_name = states('input_text.selected_electricity_consumption_tracker') -%}
+        {%- set domain = 'electricity_consumption_tracker' -%}
+
+        {# Lấy danh sách device ID #}
+        {%- set entities = integration_entities(domain) -%}
+        {%- set ns = namespace(found_id=none) -%}
+
+        {%- for entity in entities -%}
+          {# Chỉ tìm nếu chưa thấy kết quả #}
+          {%- if ns.found_id is none -%}
+            {%- set dev_id = device_id(entity) -%}
+            {%- set name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
+            {# So sánh tên #}
+            {%- if name == selected_name -%}
+              {%- set ns.found_id = dev_id -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+
+        {# Kiểm tra xem có tìm thấy device không để tránh lỗi #}
+        {%- if ns.found_id -%}
+          {% set chon_electricity_home_total_all_time = device_entities(ns.found_id)[0] -%}
+          {%- set sensor_id = chon_electricity_home_total_all_time -%}
+          {%- set start_str = state_attr(sensor_id, 'thoi_diem_bat_dau') -%}
+          {%- set end_str = state_attr(sensor_id, 'thoi_diem_ket_thuc') -%}
+        {%- else -%}
+          {# Xử lý trường hợp không tìm thấy device #}
+          {%- set sensor_id = none -%}
+          {%- set start_str = none -%}
+          {%- set end_str = none -%}
+        {%- endif -%}
+
+        {%- set selected_year = states('input_text.selected_year_electricity') | int(0) -%}
+        {%- set ns = namespace(months=[]) -%}
+
+        {%- if start_str and end_str and selected_year > 0 -%}
+          {%- set start = strptime(start_str, '%d/%m/%Y') -%}
+          {%- set end = strptime(end_str, '%d/%m/%Y') -%}
+
+          {# --- XÁC ĐỊNH RANGE THÁNG --- #}
+          
+          {# 1. Xác định tháng bắt đầu #}
+          {%- set start_m = start.month if selected_year == start.year else 1 -%}
+          
+          {# 2. Xác định tháng kết thúc #}
+          {%- set end_m = end.month if selected_year == end.year else 12 -%}
+
+          {# --- TẠO LIST --- #}
+          {%- if start.year <= selected_year <= end.year -%}
+            {%- for m in range(start_m, end_m + 1) -%}
+               {# THAY ĐỔI Ở ĐÂY: Dùng filter | string thay vì format 02d #}
+               {%- set ns.months = ns.months + [m | string] -%}
+            {%- endfor -%}
+          {%- endif -%}
+          
+          {{ ns.months }}
+        {%- else -%}
+          {# Fallback: Trả về '1' thay vì '01' #}
+          {{['1']}}
+        {%- endif -%}
+
+      select_option:
+        - service: input_text.set_value
+          target:
+            entity_id: input_text.selected_month_electricity
+          data:
+            value: "{{ option }}"
+#Kết thúc Sử dụng cho Electricity Consumption Tracker
 
   - sensor:
-      - name: Selected Device ID Electricity Consumption Tracker
-        unique_id: selected_device_id_electricity_consumption_tracker
-        icon: mdi:playlist-check
-        state: >
+#Sử dụng cho Electricity Consumption Tracker
+    - name: Selected Device ID Electricity Consumption Tracker
+      unique_id: selected_device_id_electricity_consumption_tracker
+      icon: mdi:playlist-check
+      state: >
+        {# Template tìm Device ID dựa trên Tên đang lưu trong Input Text #}
+        {%- set selected_name = states('select.select_electricity_consumption_tracker') -%}
+        {%- set domain = 'electricity_consumption_tracker' -%}
+        {# Lấy danh sách device ID #}
+        {%- set entities = integration_entities(domain) -%}
+        {%- set ns = namespace(found_id=none) -%}
+        {%- for entity in entities -%}
+          {# Chỉ tìm nếu chưa thấy kết quả #}
+          {%- if ns.found_id is none -%}
+            {%- set dev_id = device_id(entity) -%}
+            {%- set name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
+            {# So sánh tên #}
+            {%- if name == selected_name -%}
+              {%- set ns.found_id = dev_id -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ ns.found_id }}
+      attributes:
+        lay_phan_ten_entity_id: >
           {# Template tìm Device ID dựa trên Tên đang lưu trong Input Text #}
           {%- set selected_name = states('select.select_electricity_consumption_tracker') -%}
           {%- set domain = 'electricity_consumption_tracker' -%}
@@ -64,55 +214,34 @@ template:
               {%- endif -%}
             {%- endif -%}
           {%- endfor -%}
-          {{ ns.found_id }}
-        attributes:
-          lay_phan_ten_entity_id: >
-            {# Template tìm Device ID dựa trên Tên đang lưu trong Input Text #}
-            {%- set selected_name = states('select.select_electricity_consumption_tracker') -%}
-            {%- set domain = 'electricity_consumption_tracker' -%}
-            {# Lấy danh sách device ID #}
-            {%- set entities = integration_entities(domain) -%}
-            {%- set ns = namespace(found_id=none) -%}
-            {%- for entity in entities -%}
-              {# Chỉ tìm nếu chưa thấy kết quả #}
-              {%- if ns.found_id is none -%}
-                {%- set dev_id = device_id(entity) -%}
-                {%- set name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
-                {# So sánh tên #}
-                {%- if name == selected_name -%}
-                  {%- set ns.found_id = dev_id -%}
-                {%- endif -%}
-              {%- endif -%}
-            {%- endfor -%}
-            {% set id_cua_entry = ns.found_id %}
-            {% set full_entity = device_entities(id_cua_entry)[0] %}
-            {{ full_entity.split('.')[1].split('_electricity')[0] }}
-          dinh_nghia_ten_entity_id: >
-            {%- set domain = 'electricity_consumption_tracker' -%}
-            {%- set entities = integration_entities(domain) -%}
-            {# Tạo list chứa các Device ID đã duyệt để tránh trùng lặp #}
-            {%- set ns = namespace(scanned_ids=[], option_names=[]) -%}
-            {%- for entity in entities -%}
-              {%- set dev_id = device_id(entity) -%}
-              {# Nếu có device_id và chưa quét qua #}
-              {%- if dev_id and dev_id not in ns.scanned_ids -%}
-                {%- set ns.scanned_ids = ns.scanned_ids + [dev_id] -%}
-                {# Lấy tên hiển thị (ưu tiên tên user đặt) #}
-                {%- set friendly_name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
-                {# Thêm vào danh sách options #}
-                {%- set ns.option_names = ns.option_names + [friendly_name] -%}
-              {%- endif -%}
-            {%- endfor -%}
-            {# Trả về mảng JSON cho options #}
-            {% set list1 = ns.option_names %}
-  
-            {# Các bạn sửa tên muốn hiển thị ở list2 này #}
-            {% set list2 = ['Công tơ Bố','Công tơ Khải','Công tơ Tongou Tổng tự theo dõi'] %}
-            
-            {# Tạo dictionary map_ten: {'Tên Cũ': 'Tên Mới', ...} #}
-            {% set map_ten = dict(zip(list1, list2)) %}
-            {# Giá trị đầu vào #}
-            {% set input_val = states('select.select_electricity_consumption_tracker') %}
+          {% set id_cua_entry = ns.found_id %}
+          {% set full_entity = device_entities(id_cua_entry)[0] %}
+          {{ full_entity.split('.')[1].split('_electricity')[0] }}
+        dinh_nghia_ten_entity_id: >
+          {%- set domain = 'electricity_consumption_tracker' -%}
+          {%- set entities = integration_entities(domain) -%}
+          {# Tạo list chứa các Device ID đã duyệt để tránh trùng lặp #}
+          {%- set ns = namespace(scanned_ids=[], option_names=[]) -%}
+          {%- for entity in entities -%}
+            {%- set dev_id = device_id(entity) -%}
+            {# Nếu có device_id và chưa quét qua #}
+            {%- if dev_id and dev_id not in ns.scanned_ids -%}
+              {%- set ns.scanned_ids = ns.scanned_ids + [dev_id] -%}
+              {# Lấy tên hiển thị (ưu tiên tên user đặt) #}
+              {%- set friendly_name = device_attr(dev_id, 'name_by_user') or device_attr(dev_id, 'name') -%}
+              {# Thêm vào danh sách options #}
+              {%- set ns.option_names = ns.option_names + [friendly_name] -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {# Trả về mảng JSON cho options #}
+          {% set list1 = ns.option_names | sort %}
 
-            {# Tra cứu trực tiếp #}
-            {{ map_ten.get(input_val, 'Không tìm thấy') }}
+          {# Các bạn sửa tên muốn hiển thị ở list2 này #}
+          {% set list2 = ['EVN Bố','EVN Khải','Tongou'] %}
+          {# Tạo dictionary map_ten: {'Tên Cũ': 'Tên Mới', ...} #}
+          {% set map_ten = dict(zip(list1, list2)) %}
+          {# Giá trị đầu vào #}
+          {% set input_val = states('input_text.selected_electricity_consumption_tracker') %}
+          {# Tra cứu trực tiếp #}
+          {{ map_ten.get(input_val, 'Không tìm thấy') }}
+#Kết thúc Sử dụng cho Electricity Consumption Tracker
