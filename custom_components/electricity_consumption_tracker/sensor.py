@@ -21,11 +21,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     friendly_name = entry.data.get("friendly_name", "Electricity")
     
     entities = []
-    
-    # 1. Sensor Tổng
     entities.append(ConsumptionTotalSensor(db_path, f"{friendly_name} Total All Time", entry.entry_id))
 
-    # 2. Quét Database (Auto-Discovery)
     if os.path.exists(db_path):
         def scan_database():
             found_years = []
@@ -56,7 +53,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class ConsumptionBase(SensorEntity):
-    """Class cơ bản."""
     def __init__(self, db_path, name, entry_id):
         self._db_path = db_path
         self._attr_name = name
@@ -82,7 +78,6 @@ class ConsumptionBase(SensorEntity):
         self.async_schedule_update_ha_state(True)
 
 class ConsumptionMonthlySensor(ConsumptionBase):
-    """Sensor hiển thị chi tiết Tháng."""
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = "đ"
@@ -114,7 +109,7 @@ class ConsumptionMonthlySensor(ConsumptionBase):
                 pre_tax = int(res[0]) if res[0] else 0
                 vat_val = res[3] if res[3] is not None else 8
                 
-                # [FIX] Logic fallback: Nếu DB trả về 0 nhưng có tiền trước thuế -> Tự tính
+                # [FIX] Logic fallback mạnh hơn: Nếu DB trả về <= 0 mà có tiền trước thuế -> Tự tính lại
                 db_post_tax = res[2]
                 if db_post_tax and db_post_tax > 0:
                     post_tax = int(db_post_tax)
@@ -133,10 +128,9 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             else:
                 self._attr_native_value = 0
         except Exception as e:
-            _LOGGER.error(f"Update error month {self._month}/{self._year}: {e}")
+            _LOGGER.error(f"Update error month: {e}")
 
 class ConsumptionYearlySensor(ConsumptionBase):
-    """Sensor hiển thị chi tiết Năm."""
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = "đ"
@@ -170,7 +164,7 @@ class ConsumptionYearlySensor(ConsumptionBase):
                 pre_tax = int(res[0]) if res[0] else 0
                 vat_val = res[3] if res[3] is not None else 8
 
-                # [FIX] Logic fallback cho Năm
+                # [FIX] Fallback cho Năm
                 db_post_tax = res[2]
                 if db_post_tax and db_post_tax > 0:
                     post_tax = int(db_post_tax)
@@ -187,17 +181,16 @@ class ConsumptionYearlySensor(ConsumptionBase):
                         f"Thang_{r[0]}": {
                             "san_luong_kwh": round(r[1], 2),
                             "thanh_tien_vnd": int(r[2]),
-                            "thanh_tien_sau_thue_vnd": int(r[3]) if r[3] and r[3] > 0 else int(r[2] * (1 + vat_val/100)) # Fallback con
+                            "thanh_tien_sau_thue_vnd": int(r[3]) if r[3] and r[3] > 0 else int(r[2] * (1 + vat_val/100))
                         } for r in month_rows
                     }
                 }
             else:
                 self._attr_native_value = 0
         except Exception as e:
-            _LOGGER.error(f"Update error year {self._year}: {e}")
+            _LOGGER.error(f"Update error year: {e}")
 
 class ConsumptionTotalSensor(ConsumptionBase):
-    """Sensor hiển thị Tổng Tích Lũy."""
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = "kWh"
