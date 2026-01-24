@@ -20,16 +20,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     db_path = hass.data[DOMAIN][entry.entry_id]["db_path"]
     friendly_name = entry.data.get("friendly_name", "Electricity")
     
-    # Quản lý việc tạo sensor động
     manager = ElectricitySensorManager(hass, entry, async_add_entities, db_path, friendly_name)
-    
-    # 1. Tạo sensor Tổng (luôn tồn tại)
     await manager.async_create_total_sensor()
-    
-    # 2. Quét DB lần đầu để tạo sensor tháng/năm cũ
     await manager.async_check_and_add_new_sensors()
 
-    # 3. Đăng ký lắng nghe tín hiệu cập nhật để tạo sensor mới khi sang tháng mới
     entry.async_on_unload(
         async_dispatcher_connect(
             hass, 
@@ -39,17 +33,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     )
 
 class ElectricitySensorManager:
-    """Class quản lý việc tạo sensor động."""
     def __init__(self, hass, entry, async_add_entities, db_path, friendly_name):
         self.hass = hass
         self.entry_id = entry.entry_id
         self.async_add_entities = async_add_entities
         self.db_path = db_path
         self.friendly_name = friendly_name
-        
-        # Cache để tránh tạo trùng sensor
         self.existing_years = set()
-        self.existing_months = set() # Format: (year, month)
+        self.existing_months = set() 
         self.total_sensor_created = False
 
     async def async_create_total_sensor(self):
@@ -60,9 +51,7 @@ class ElectricitySensorManager:
             self.total_sensor_created = True
 
     async def async_check_and_add_new_sensors(self):
-        """Quét DB và thêm sensor nếu chưa tồn tại."""
-        if not os.path.exists(self.db_path):
-            return
+        if not os.path.exists(self.db_path): return
 
         def get_existing_periods():
             found_years = []
@@ -79,19 +68,15 @@ class ElectricitySensorManager:
                 _LOGGER.error(f"Lỗi quét DB: {e}")
             return found_years, found_months
 
-        # Chạy query trong luồng phụ để không chặn HA
         years, months = await self.hass.async_add_executor_job(get_existing_periods)
-        
         new_entities = []
 
-        # Check Years
         for year in years:
             if year not in self.existing_years:
                 name = f"{self.friendly_name} - Năm {year}"
                 new_entities.append(ConsumptionYearlySensor(self.db_path, name, year, self.entry_id))
                 self.existing_years.add(year)
 
-        # Check Months
         for year, month in months:
             if (year, month) not in self.existing_months:
                 name = f"{self.friendly_name} - Tháng {month:02d}/{year}"
@@ -101,45 +86,30 @@ class ElectricitySensorManager:
         if new_entities:
             self.async_add_entities(new_entities)
 
-
 class ConsumptionBase(SensorEntity):
-    """Base class xử lý update async."""
     def __init__(self, db_path, name, entry_id):
         self._db_path = db_path
         self._attr_name = name
         self._entry_id = entry_id
         self._attr_has_entity_name = False 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry_id)},
-            "name": entry_id, 
-        }
+        self._attr_device_info = {"identifiers": {(DOMAIN, entry_id)}, "name": entry_id}
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
         self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                f"{SIGNAL_UPDATE_SENSORS}_{self._entry_id}",
-                self._async_force_update_callback
-            )
+            async_dispatcher_connect(self.hass, f"{SIGNAL_UPDATE_SENSORS}_{self._entry_id}", self._async_force_update_callback)
         )
 
     @callback
     def _async_force_update_callback(self):
-        """Force update khi nhận tín hiệu."""
         self.async_schedule_update_ha_state(True)
 
     async def async_update(self):
-        """Update bất đồng bộ để tránh chặn I/O."""
-        if not os.path.exists(self._db_path):
-            return
-        # Gọi hàm _update_data_sync trong executor
+        if not os.path.exists(self._db_path): return
         await self.hass.async_add_executor_job(self._update_data_sync)
 
     def _update_data_sync(self):
-        """Hàm update xử lý logic DB (sync) được gọi bởi wrapper async."""
         raise NotImplementedError()
-
 
 class ConsumptionMonthlySensor(ConsumptionBase):
     _attr_device_class = SensorDeviceClass.MONETARY
@@ -158,14 +128,35 @@ class ConsumptionMonthlySensor(ConsumptionBase):
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
             
+            # [CHANGE] Đọc thêm ngay_bat_dau, ngay_ket_thuc từ DB
             cursor.execute("""
-                SELECT thanh_tien, tong_san_luong, thanh_tien_sau_thue, vat 
+                SELECT thanh_tien, tong_san_luong, thanh_tien_sau_thue, vat, ngay_bat_dau, ngay_ket_thuc
                 FROM monthly_bill WHERE nam=? AND thang=?
             """, (self._year, self._month))
             res = cursor.fetchone()
             
-            cursor.execute("SELECT ngay, san_luong FROM daily_usage WHERE nam=? AND thang=? ORDER BY ngay ASC", (self._year, self._month))
-            daily_rows = cursor.fetchall()
+            daily_rows = []
+            start_date_str = "N/A"
+            end_date_str = "N/A"
+
+            if res:
+                # Nếu DB đã có lưu ngày bắt đầu/kết thúc (từ code mới), dùng nó để query
+                start_date_str = res[4]
+                end_date_str = res[5]
+                
+                if start_date_str and end_date_str:
+                    cursor.execute(f"""
+                        SELECT ngay, san_luong 
+                        FROM daily_usage 
+                        WHERE printf('%04d-%02d-%02d', nam, thang, ngay) BETWEEN ? AND ?
+                        ORDER BY nam, thang, ngay ASC
+                    """, (start_date_str, end_date_str))
+                else:
+                    # Fallback cho dữ liệu cũ chưa có ngày lưu
+                    cursor.execute("SELECT ngay, san_luong FROM daily_usage WHERE nam=? AND thang=? ORDER BY ngay ASC", (self._year, self._month))
+                
+                daily_rows = cursor.fetchall()
+
             conn.close()
 
             if res:
@@ -184,6 +175,7 @@ class ConsumptionMonthlySensor(ConsumptionBase):
                     "tong_tien_truoc_thue": pre_tax,
                     "tong_tien_sau_thue": post_tax,
                     "vat_rate": f"{vat_val}%",
+                    "ky_hoa_don": f"{start_date_str} -> {end_date_str}",
                     "chi_tiet_ngay": {f"Ngay_{r[0]:02d}": round(r[1], 2) for r in daily_rows},
                     "data_source": "Monthly Detail"
                 }
@@ -285,29 +277,4 @@ class ConsumptionTotalSensor(ConsumptionBase):
                 
                 total_pre = int(res[4]) if res[4] else 0
                 db_total_post = res[5]
-                vat_val = res[6] if res[6] is not None else 8
-
-                if db_total_post and db_total_post > 0:
-                    total_post = int(db_total_post)
-                else:
-                    total_post = int(total_pre * (1 + vat_val / 100))
-
-                self._attr_extra_state_attributes = {
-                    "tong_so_thang_du_lieu": res[1],
-                    "thoi_diem_bat_dau": res[2],
-                    "thoi_diem_ket_thuc": res[3],
-                    "tong_tien_tich_luy": total_pre,
-                    "tong_tien_tich_luy_sau_thue": total_post,
-                    "current_vat_ref": f"{vat_val}%",
-                    "chi_tiet_tung_nam": {
-                        f"Nam_{y[0]}": {
-                            "tong_san_luong_kwh": round(y[1], 2),
-                            "tong_tien_vnd": int(y[2]),
-                            "tong_tien_sau_thue_vnd": int(y[3]) if y[3] and y[3] > 0 else int(y[2] * (1 + (y[4] or 8)/100))
-                        } for y in years_stats
-                    }
-                }
-            else:
-                self._attr_native_value = 0
-        except Exception as e:
-            _LOGGER.error(f"Update error total: {e}")
+                vat_val =
