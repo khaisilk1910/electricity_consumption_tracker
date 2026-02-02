@@ -7,6 +7,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
+from homeassistant.util import slugify
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -76,14 +77,28 @@ class ElectricitySensorManager:
                 new_entities.append(ConsumptionYearlySensor(self.db_path, name, year, self.entry_id))
                 self.existing_years.add(year)
 
+
         for year, month in months:
             if (year, month) not in self.existing_months:
-                name = f"{self.friendly_name} - Tháng {month:02d}/{year}"
-                new_entities.append(ConsumptionMonthlySensor(self.db_path, name, year, month, self.entry_id))
+                # 1. Tên hiển thị (Giữ nguyên :02d để hiện Tháng 07/2025)
+                display_name = f"{self.friendly_name} - Tháng {month:02d}/{year}"
+                
+                # Khởi tạo Sensor
+                sensor = ConsumptionMonthlySensor(self.db_path, display_name, year, month, self.entry_id)
+                
+                # 2. ÉP CỨNG Entity ID (Dùng format không có số 0)
+                # Tạo chuỗi tên để slugify: "Tongou... Thang 7 2025"
+                id_name_str = f"{self.friendly_name} Thang {month} {year}"
+                
+                # Gán trực tiếp entity_id (kết quả sẽ là sensor.tongou_..._thang_7_2025)
+                sensor.entity_id = f"sensor.{slugify(id_name_str)}"
+                
+                new_entities.append(sensor)
                 self.existing_months.add((year, month))
 
         if new_entities:
             self.async_add_entities(new_entities)
+
 
 class ConsumptionBase(SensorEntity):
     def __init__(self, db_path, name, entry_id):
