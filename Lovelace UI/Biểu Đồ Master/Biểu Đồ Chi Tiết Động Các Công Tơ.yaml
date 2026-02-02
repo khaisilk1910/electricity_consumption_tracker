@@ -1,5 +1,3 @@
-# Hướng dẫn:
-#   1 - Vào Helpers tạo hai 
 type: vertical-stack
 cards:
   - type: horizontal-stack
