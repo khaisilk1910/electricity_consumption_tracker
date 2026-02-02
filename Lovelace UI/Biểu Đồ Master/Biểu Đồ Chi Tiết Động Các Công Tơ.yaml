@@ -113,6 +113,52 @@ cards:
         icon: mdi:calendar-cursor
   - type: horizontal-stack
     cards:
+      - type: custom:mushroom-template-card
+        features_position: inline
+        icon: mdi:skip-backward
+        color: red
+        badge_text: "{{ states('select.select_electricity_year')|int - 1 }}"
+        badge_color: rgba(255,255,255,0)
+        tap_action:
+          action: perform-action
+          perform_action: select.select_previous
+          target:
+            entity_id: select.select_electricity_year
+      - type: custom:mushroom-template-card
+        features_position: inline
+        icon: mdi:skip-previous
+        color: red
+        badge_color: rgba(255,255,255,0)
+        badge_text: "{{ states('select.select_electricity_month')|int - 1 }}"
+        tap_action:
+          action: perform-action
+          perform_action: select.select_previous
+          target:
+            entity_id: select.select_electricity_month
+      - type: custom:mushroom-template-card
+        features_position: inline
+        icon: mdi:skip-next
+        color: red
+        badge_color: rgba(255,255,255,0)
+        badge_text: "{{ states('select.select_electricity_month')|int + 1 }}"
+        tap_action:
+          action: perform-action
+          perform_action: select.select_next
+          target:
+            entity_id: select.select_electricity_month
+      - type: custom:mushroom-template-card
+        features_position: inline
+        icon: mdi:skip-forward
+        color: red
+        badge_color: rgba(255,255,255,0)
+        badge_text: "{{ states('select.select_electricity_year')|int + 1 }}"
+        tap_action:
+          action: perform-action
+          perform_action: select.select_next
+          target:
+            entity_id: select.select_electricity_year
+  - type: horizontal-stack
+    cards:
       - type: custom:mushroom-select-card
         entity: select.select_electricity_month
         name: Tháng
@@ -341,16 +387,15 @@ cards:
           data_generator: |
             const data = entity.attributes.chi_tiet_cac_thang;
             if (!data) return [];
-            // Lấy năm từ tên entity
             const year = entity.entity_id.split('_').pop(); 
             let chartData = [];
-            // Chạy vòng lặp cố định 12 tháng
             for (let i = 1; i <= 12; i++) {
-              const key = 'Thang_' + i;
-              // Tạo timestamp ngày 1 của tháng tương ứng
+              // [QUAN TRỌNG] Thêm số 0 vào trước nếu tháng < 10 để thành Thang_01, Thang_02...
+              const monthStr = i < 10 ? '0' + i : i;
+              const key = 'Thang_' + monthStr;
+              
               const date = new Date(year, i - 1, 1).getTime();
               let val = 0;
-              // Nếu có dữ liệu trong attribute thì lấy, không thì để 0
               if (data[key]) {
                 val = data[key].san_luong_kwh || 0;
               }
@@ -374,12 +419,15 @@ cards:
             if (!data) return [];
             const year = entity.entity_id.split('_').pop();
             let chartData = [];
-            // Chạy vòng lặp cố định 12 tháng
             for (let i = 1; i <= 12; i++) {
-              const key = 'Thang_' + i;
+              // [QUAN TRỌNG] Logic tương tự: tạo key Thang_01, Thang_02...
+              const monthStr = i < 10 ? '0' + i : i;
+              const key = 'Thang_' + monthStr;
+              
               const date = new Date(year, i - 1, 1).getTime();
               let money = 0;
               if (data[key]) {
+                 // Lấy trường thanh_tien_vnd từ attributes
                  money = data[key].thanh_tien_vnd || 0;
               }
               chartData.push([date, money]);
@@ -430,4 +478,5 @@ cards:
       columns: full
 grid_options:
   columns: full
+
 
