@@ -1,0 +1,42 @@
+name: Update Manifest Version on Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Cấp quyền cho Action được phép commit code
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Lấy phiên bản từ Release Tag
+        id: get_version
+        run: |
+          # Lấy tên tag của release vừa tạo
+          VERSION="${{ github.event.release.tag_name }}"
+          # Xóa chữ 'v' ở đầu nếu bạn có thói quen đặt tag là v2026.03.04
+          VERSION=${VERSION#v}
+          echo "Bản phát hành mới là: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Cập nhật file manifest.json
+        run: |
+          # Cập nhật đường dẫn tới file manifest.json của bạn ở dòng dưới
+          # Ví dụ: custom_components/am_lich_viet_nam/manifest.json
+          MANIFEST_PATH="custom_components/am_lich_viet_nam/manifest.json"
+          
+          # Dùng công cụ jq để sửa file JSON một cách an toàn
+          jq '.version = env.VERSION' $MANIFEST_PATH > tmp.json && mv tmp.json $MANIFEST_PATH
+
+      - name: Commit và Push thay đổi
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: tự động cập nhật version thành ${{ env.VERSION }}"
+          file_pattern: '**/manifest.json'
