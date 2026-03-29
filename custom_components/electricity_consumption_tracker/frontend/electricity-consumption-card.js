@@ -2,7 +2,6 @@
   'use strict';
 
   // HÀM TIỆN ÍCH CHUNG
-  // Dùng en-US để phân cách hàng nghìn bằng dấu phẩy (,)
   const formatMoney = (val) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(val || 0));
   const formatNumber = (val) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(val || 0);
 
@@ -43,25 +42,19 @@
     render() {
       if (!this._hass) return;
       
-      const states = this._hass.states || {};
-      const entities = Object.keys(states).filter(eid => {
-        const attr = states[eid].attributes;
-        return attr && attr.chi_tiet_tung_nam !== undefined && attr.tong_so_thang_du_lieu !== undefined;
-      });
-      
       const conf = this._config || {};
-      const currentEntity = conf.entity || "";
       const currentTitle = conf.title || "";
       const currentIcon = conf.icon || "";
 
+      // Đã đổi màu mặc định của Line để khác biệt hoàn toàn với Cột xanh
       const chartColorFields = [
         { id: 'barKwh1', label: 'Cột kWh (Đỉnh)', default: '#3b82f6' },
         { id: 'barKwh2', label: 'Cột kWh (Đáy)', default: '#1e3a8a' },
         { id: 'barVnd1', label: 'Cột VNĐ (Đỉnh)', default: '#10b981' },
         { id: 'barVnd2', label: 'Cột VNĐ (Đáy)', default: '#047857' },
-        { id: 'lineKwh', label: 'Line kWh (Năm)', default: '#8b5cf6' },
-        { id: 'lineVnd', label: 'Line VNĐ (Năm)', default: '#f97316' },
-        { id: 'lineMonth', label: 'Line (Tháng)', default: '#f59e0b' }
+        { id: 'lineKwh', label: 'Line kWh (Năm)', default: '#ff3366' }, // Hồng đỏ sáng
+        { id: 'lineVnd', label: 'Line VNĐ (Năm)', default: '#ffcc00' }, // Vàng tươi
+        { id: 'lineMonth', label: 'Line (Tháng)', default: '#ff3366' } 
       ];
 
       this.innerHTML = `
@@ -81,6 +74,8 @@
           .section { border: 1px solid var(--divider-color, #e0e0e0); border-radius: 12px; padding: 16px; margin-bottom: 16px; background: var(--card-background-color, transparent); box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: padding 0.3s ease; }
           .section.collapsed { padding-bottom: 16px; }
           .section-title { font-weight: 600; display: flex; align-items: center; justify-content: space-between; font-size: 16px; color: var(--primary-text-color); border-bottom: 1px solid var(--divider-color, #e0e0e0); padding-bottom: 8px; margin-bottom: 16px; cursor: pointer; user-select: none; }
+          .section-title.no-collapse { cursor: default; }
+          .section-title.no-collapse:hover { opacity: 1; }
           .section-title:hover { opacity: 0.8; }
           .section.collapsed .section-title { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
           .section-content { display: block; overflow: hidden; animation: slideDown 0.3s ease-out forwards; }
@@ -101,9 +96,8 @@
         <div class="editor-container">
           
           <div class="section">
-            <div class="section-title">
+            <div class="section-title no-collapse">
               <div class="title-left">⚙️ Cài đặt chung</div>
-              <div class="title-right"><span class="section-icon">▼</span></div>
             </div>
             <div class="section-content">
               <div class="row-col">
@@ -117,29 +111,15 @@
               <div class="row-col">
                 <span class="label">Sensor mặc định</span>
                 <select id="entity-select" class="custom-input config-trigger">
-                  <option value="" ${!currentEntity ? 'selected' : ''}>-- Tự động chọn cái đầu tiên --</option>
-                  ${entities.map(e => {
-                    const state = this._hass.states[e];
-                    let name = state.attributes.friendly_name || e;
-                    if (this._hass.entities && this._hass.entities[e]) {
-                      const entInfo = this._hass.entities[e];
-                      if (entInfo.device_id && this._hass.devices && this._hass.devices[entInfo.device_id]) {
-                        const devInfo = this._hass.devices[entInfo.device_id];
-                        name = devInfo.name_by_user || devInfo.name || name;
-                      } else if (entInfo.name) name = entInfo.name;
-                    }
-                    name = name.replace(' Total All Time', '').trim();
-                    return `<option value="${e}" ${currentEntity === e ? 'selected' : ''}>${name}</option>`;
-                  }).join('')}
+                  <option value="">Đang tải danh sách...</option>
                 </select>
               </div>
             </div>
           </div>
 
-          <div class="section collapsed">
-            <div class="section-title">
+          <div class="section">
+            <div class="section-title no-collapse">
               <div class="title-left">🎨 Nền (Background)</div>
-              <div class="title-right"><span class="section-icon">▼</span></div>
             </div>
             <div class="section-content">
               <div class="row">
@@ -243,12 +223,17 @@
           <div class="section collapsed">
             <div class="section-title">
               <div class="title-left">🔲 Viền (Border)</div>
-              <div class="title-right"><span class="section-icon">▼</span></div>
+              <div class="title-right">
+                <input type="checkbox" id="border_enable" class="config-trigger" style="transform: scale(1.2); cursor: pointer;" title="Bật/Tắt viền">
+                <span class="section-icon">▼</span>
+              </div>
             </div>
             <div class="section-content">
-              <div class="row"><span class="label">Màu viền</span><div class="input-group"><input type="color" id="border_color" class="config-trigger"><span class="val-badge" id="border_color_val"></span></div></div>
-              <div class="row"><span class="label" style="min-width: 120px;">Độ dày viền (px)</span><input type="range" id="border_width" class="config-trigger" min="0" max="10" step="1"><span class="val-badge" id="border_width_val"></span></div>
-              <div class="row"><span class="label" style="min-width: 120px;">Độ trong suốt (%)</span><input type="range" id="border_opacity" class="config-trigger" min="0" max="100"><span class="val-badge" id="border_opacity_val"></span></div>
+              <div id="border_settings">
+                <div class="row"><span class="label">Màu viền</span><div class="input-group"><input type="color" id="border_color" class="config-trigger"><span class="val-badge" id="border_color_val"></span></div></div>
+                <div class="row"><span class="label" style="min-width: 120px;">Độ dày viền (px)</span><input type="range" id="border_width" class="config-trigger" min="0" max="10" step="1"><span class="val-badge" id="border_width_val"></span></div>
+                <div class="row"><span class="label" style="min-width: 120px;">Độ trong suốt (%)</span><input type="range" id="border_opacity" class="config-trigger" min="0" max="100"><span class="val-badge" id="border_opacity_val"></span></div>
+              </div>
             </div>
           </div>
 
@@ -286,6 +271,7 @@
     get _bg_gradient_color2() { return this._config?.bg_gradient_color2 || '#d9e2ec'; }
     get _bg_gradient_angle() { return this._config?.bg_gradient_angle !== undefined ? this._config.bg_gradient_angle : 135; }
 
+    get _border_enable() { return this._config?.border_enable !== undefined ? this._config.border_enable : (this._config?.border_width > 0); }
     get _border_color() { return this._config?.border_color || '#ffffff'; }
     get _border_width() { return this._config?.border_width !== undefined ? this._config.border_width : 0; }
     get _border_opacity() { return this._config?.border_opacity !== undefined ? this._config.border_opacity : 0; }
@@ -304,6 +290,50 @@
 
     updateUI() {
       if (!this.querySelector('#bg_type')) return;
+
+      const entitySelect = this.querySelector('#entity-select');
+      if (entitySelect && this._hass) {
+          const currentVal = this._config.entity || "";
+          let selectHtml = `<option value="">-- Tự động chọn cái đầu tiên --</option>`;
+          
+          const states = this._hass.states || {};
+          const validEntities = Object.keys(states).filter(eid => states[eid].attributes && states[eid].attributes.chi_tiet_tung_nam !== undefined);
+          
+          if (currentVal && !validEntities.includes(currentVal)) {
+              validEntities.unshift(currentVal);
+          }
+
+          validEntities.forEach(e => {
+              const state = states[e];
+              let name = state ? (state.attributes.friendly_name || e) : e;
+              if (this._hass.entities && this._hass.entities[e]) {
+                  const entInfo = this._hass.entities[e];
+                  if (entInfo.device_id && this._hass.devices && this._hass.devices[entInfo.device_id]) {
+                      const devInfo = this._hass.devices[entInfo.device_id];
+                      name = devInfo.name_by_user || devInfo.name || name;
+                  } else if (entInfo.name) name = entInfo.name;
+              }
+              name = name.replace(' Total All Time', '').trim();
+              selectHtml += `<option value="${e}">${name}</option>`;
+          });
+
+          entitySelect.innerHTML = selectHtml;
+          entitySelect.value = currentVal;
+      }
+      
+      const titleInput = this.querySelector('#title-input');
+      if (titleInput && this._config.title !== undefined) titleInput.value = this._config.title || "";
+      
+      const iconInput = this.querySelector('#icon-input');
+      if (iconInput && this._config.icon !== undefined) iconInput.value = this._config.icon || "";
+      
+      const chartColorKeys = ['barKwh1', 'barKwh2', 'barVnd1', 'barVnd2', 'lineKwh', 'lineVnd', 'lineMonth'];
+      chartColorKeys.forEach(key => {
+          const input = this.querySelector(`.chart-color-trigger[data-key="${key}"]`);
+          if (input && this._config[key]) {
+              input.value = this._config[key];
+          }
+      });
 
       this.querySelector('#bg_type').value = this._bg_type;
       this.querySelector('#bg_opacity').value = this._bg_opacity;
@@ -334,6 +364,9 @@
       this.querySelector('#bg_gradient_angle').value = this._bg_gradient_angle;
       this.querySelector('#bg_gradient_angle_val').textContent = this._bg_gradient_angle + '°';
 
+      const borderCheckbox = this.querySelector('#border_enable');
+      if (borderCheckbox) borderCheckbox.checked = this._border_enable;
+      this.querySelector('#border_settings').style.display = this._border_enable ? 'block' : 'none';
       this.querySelector('#border_color').value = this._border_color;
       this.querySelector('#border_color_val').textContent = this._border_color.toUpperCase();
       this.querySelector('#border_width').value = this._border_width;
@@ -388,6 +421,7 @@
             bg_gradient_color2: this.querySelector('#bg_gradient_color2').value,
             bg_gradient_angle: parseInt(this.querySelector('#bg_gradient_angle').value, 10),
 
+            border_enable: this.querySelector('#border_enable').checked,
             border_color: this.querySelector('#border_color').value,
             border_width: parseInt(this.querySelector('#border_width').value, 10),
             border_opacity: parseInt(this.querySelector('#border_opacity').value, 10),
@@ -411,15 +445,18 @@
         
         const event = new CustomEvent("config-changed", { detail: { config: newConfig }, bubbles: true, composed: true });
         this.dispatchEvent(event);
-        this.updateUI();
       };
 
       this.querySelectorAll('.config-trigger, .chart-color-trigger').forEach(el => {
-        el.addEventListener('input', dispatchUpdate);
-        el.addEventListener('change', dispatchUpdate); 
+        if (el.tagName === 'SELECT') {
+            el.addEventListener('change', dispatchUpdate);
+        } else {
+            el.addEventListener('input', dispatchUpdate);
+            el.addEventListener('change', dispatchUpdate); 
+        }
       });
 
-      this.querySelectorAll('.section-title').forEach(titleEl => {
+      this.querySelectorAll('.section-title:not(.no-collapse)').forEach(titleEl => {
         const inputs = titleEl.querySelectorAll('input, select, button');
         inputs.forEach(input => {
           input.addEventListener('click', (e) => e.stopPropagation());
@@ -449,11 +486,9 @@
       this.attachShadow({ mode: 'open' });
       this.config = {}; 
       
-      // State cho Tab Tổng quan
       this._selectedYear = null;
       this._selectedMonth = null;
       
-      // State cho Tab Tra cứu
       this._activeTab = 'overview'; // 'overview' | 'search'
       this._formYear = null;
       this._formMonth = ''; // Rỗng = Cả năm
@@ -692,11 +727,16 @@
           stringForContrastCalc = bgColor;
       }
 
-      const borderWidth = conf.border_width !== undefined ? conf.border_width : 0;
-      if (conf.border_opacity !== undefined && conf.border_opacity > 0 && borderWidth > 0) {
+      const borderEnabled = conf.border_enable !== undefined ? conf.border_enable : (conf.border_width > 0);
+      if (borderEnabled) {
+          const borderWidth = conf.border_width !== undefined ? conf.border_width : 0;
+          const borderOpacity = conf.border_opacity !== undefined ? conf.border_opacity : 0;
           const borderColor = conf.border_color || '#ffffff';
-          const borderOpacity = conf.border_opacity;
-          this.card.style.border = `${borderWidth}px solid ${hexToRgba(borderColor, borderOpacity)}`;
+          if (borderOpacity > 0 && borderWidth > 0) {
+              this.card.style.border = `${borderWidth}px solid ${hexToRgba(borderColor, borderOpacity)}`;
+          } else {
+              this.card.style.border = 'none';
+          }
       } else {
           this.card.style.border = 'none';
       }
@@ -716,15 +756,15 @@
       let c_block = conf.blockBg || '#ffffff';
       let c_text = conf.textColor || '#1e3a8a';
       let c_red = conf.redText || '#dc2626';
-      let c_option_bg = '#ffffff'; // Default màu nền cho option
+      let c_option_bg = '#ffffff'; 
       
       let c_barK1 = conf.barKwh1 || '#3b82f6';
       let c_barK2 = conf.barKwh2 || '#1e3a8a';
       let c_barV1 = conf.barVnd1 || '#10b981';
       let c_barV2 = conf.barVnd2 || '#047857';
-      let c_lineK = conf.lineKwh || '#8b5cf6';
-      let c_lineV = conf.lineVnd || '#f97316';
-      let c_lineM = conf.lineMonth || '#f59e0b';
+      let c_lineK = conf.lineKwh || '#ff3366'; // Hồng/Đỏ mặc định để dễ nhìn
+      let c_lineV = conf.lineVnd || '#ffcc00'; // Vàng tươi mặc định
+      let c_lineM = conf.lineMonth || '#ff3366';
 
       if (conf.auto_contrast) {
           const hexRegex = /#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\b/gi;
@@ -791,7 +831,7 @@
               if (isLightBackground) {
                   c_text = '#1a1a1a';
                   c_block = hexToRgba('#000000', Math.max(5, op * 10)); 
-                  c_option_bg = '#ffffff'; // Nền sáng cho thẻ select
+                  c_option_bg = '#ffffff'; 
                   
                   if (s < 0.15) { c_red = '#E65100'; }
                   else if (hue >= 330 || hue < 30) { c_red = '#0D47A1'; }
@@ -800,21 +840,22 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#E65100'; }
                   else { c_red = '#E64A19'; }
                   
+                  // Bảng màu chéo cực đậm cho Light Theme (Line nổi rực rỡ so với cột)
                   const palettesLight = {
-                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#7c3aed'},
-                      'green':  {1: '#10b981', 2: '#047857', l: '#059669'},
-                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#0284c7'},
-                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#7c3aed'},
-                      'orange': {1: '#f97316', 2: '#c2410c', l: '#ea580c'},
-                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#db2777'}
+                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'}, // Blue bar -> Strong Red line
+                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'}, // Green bar -> Strong Purple line
+                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'}, // Cyan bar -> Strong Rose line
+                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'}, // Purple bar -> Strong Orange line
+                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'}, // Orange bar -> Strong Blue line
+                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'}  // Pink bar -> Strong Emerald line
                   };
                   c_barK1 = palettesLight[chartPalette.kwh][1]; c_barK2 = palettesLight[chartPalette.kwh][2]; c_lineK = palettesLight[chartPalette.kwh].l;
                   c_barV1 = palettesLight[chartPalette.vnd][1]; c_barV2 = palettesLight[chartPalette.vnd][2]; c_lineV = palettesLight[chartPalette.vnd].l;
-                  c_lineM = palettesLight['orange'].l; 
+                  c_lineM = c_lineK; 
               } else {
                   c_text = '#ffffff';
                   c_block = hexToRgba('#ffffff', Math.max(10, op * 15)); 
-                  c_option_bg = '#1e1e1e'; // Nền tối đặc cho thẻ select
+                  c_option_bg = '#1e1e1e'; 
                   
                   if (s < 0.15) { c_red = '#FFCA28'; }
                   else if (hue >= 330 || hue < 30) { c_red = '#FFEA00'; }
@@ -823,17 +864,18 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#C6FF00'; }
                   else { c_red = '#FFD54F'; }
 
+                  // Bảng màu Neon chéo cực sáng cho Dark Theme (Line phát sáng so với cột)
                   const palettesDark = {
-                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#a78bfa'},
-                      'green':  {1: '#34d399', 2: '#10b981', l: '#10b981'},
-                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#38bdf8'},
-                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#c084fc'},
-                      'orange': {1: '#fb923c', 2: '#f97316', l: '#fba11b'},
-                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fb7185'}
+                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'}, // Blue bar -> Neon Yellow line
+                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'}, // Green bar -> Neon Pink line
+                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'}, // Cyan bar -> Neon Orange line
+                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'}, // Purple bar -> Neon Green line
+                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'}, // Orange bar -> Neon Cyan line
+                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'}  // Pink bar -> Neon Yellow line
                   };
                   c_barK1 = palettesDark[chartPalette.kwh][1]; c_barK2 = palettesDark[chartPalette.kwh][2]; c_lineK = palettesDark[chartPalette.kwh].l;
                   c_barV1 = palettesDark[chartPalette.vnd][1]; c_barV2 = palettesDark[chartPalette.vnd][2]; c_lineV = palettesDark[chartPalette.vnd].l;
-                  c_lineM = '#fbbf24'; 
+                  c_lineM = c_lineK; 
               }
           }
       }
@@ -927,7 +969,7 @@
             
             <div class="chart-container">
               <svg class="svg-overlay" preserveAspectRatio="none" viewBox="0 0 100 100">
-                <polyline points="${polylinePointsDaily}" fill="none" stroke="${c_lineM}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                <polyline points="${polylinePointsDaily}" fill="none" stroke="${c_lineM}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
               <div class="dots-overlay">${dotsHtmlDaily}</div>
               <div class="bar-chart">
@@ -1046,8 +1088,8 @@
 
             <div class="chart-container">
               <svg class="svg-overlay" preserveAspectRatio="none" viewBox="0 0 100 100">
-                <polyline points="${polylinePointsKwh}" fill="none" stroke="${c_lineK}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
-                <polyline points="${polylinePointsVnd}" fill="none" stroke="${c_lineV}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                <polyline points="${polylinePointsKwh}" fill="none" stroke="${c_lineK}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                <polyline points="${polylinePointsVnd}" fill="none" stroke="${c_lineV}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
               <div class="dots-overlay">${dotsKwhHtml}${dotsVndHtml}</div>
               <div class="bar-chart">
@@ -1081,7 +1123,7 @@
           }
 
           return chunks.map((chunk, chunkIdx) => {
-              // TÍNH TỔNG CỦA CẢ CHU KỲ (Thêm theo yêu cầu mới)
+              // TÍNH TỔNG CỦA CẢ CHU KỲ
               let totalKwh = 0;
               let totalTruocVat = 0;
               let totalSauVat = 0;
@@ -1157,8 +1199,8 @@
 
                   <div class="chart-container">
                     <svg class="svg-overlay" preserveAspectRatio="none" viewBox="0 0 100 100">
-                      <polyline points="${polylinePointsKwh}" fill="none" stroke="${c_lineK}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
-                      <polyline points="${polylinePointsVnd}" fill="none" stroke="${c_lineV}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                      <polyline points="${polylinePointsKwh}" fill="none" stroke="${c_lineK}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                      <polyline points="${polylinePointsVnd}" fill="none" stroke="${c_lineV}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                     <div class="dots-overlay">${dotsKwhHtml}${dotsVndHtml}</div>
                     <div class="bar-chart">
@@ -1198,7 +1240,6 @@
             --option-bg: ${c_option_bg};
           }
 
-          /* CHỈNH SỬA MÀU NỀN VÀ MÀU CHỮ CHO THẺ OPTION DỰA THEO THEME ĐỂ FIX LỖI TÀNG HÌNH */
           select option {
             background-color: var(--option-bg) !important;
             color: var(--text-main) !important;
@@ -1249,7 +1290,7 @@
           .stat-box.primary .stat-value { color: var(--text-main); font-size: clamp(14px, 4vw, 22px); }
           .stat-value { font-size: clamp(11px, 3.2vw, 17px); font-weight: 800; color: var(--text-red); display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px; line-height: 1.1;}
           .stat-unit { font-size: clamp(9px, 2.5vw, 13px); color: var(--text-main); opacity: 0.7; font-weight: 600; white-space: nowrap;}
-          .stat-label { font-size: clamp(9px, 2.2vw, 11px); font-weight: 700; color: var(--text-main); opacity: 0.6; margin-top: 2px; letter-spacing: 0.1px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; width: 100%;}
+          .stat-label { font-size: clamp(9px, 2.vw, 11px); font-weight: 700; color: var(--text-main); opacity: 0.6; margin-top: 2px; letter-spacing: 0.1px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; width: 100%;}
           .emoji-money, .icon-kwh { flex-shrink: 0; }
           
           .icon-kwh { color: #f59e0b; transition: all 0.3s; transform-origin: center; display: inline-block; }
@@ -1278,7 +1319,6 @@
           .c-stat-val { font-size: clamp(11px, 3vw, 16px); font-weight: 800; display:flex; align-items:center; justify-content:flex-end; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px;}
           .c-stat-val.primary { color: var(--text-main); } .c-stat-val.money { color: var(--text-red); }   
           
-          /* CSS CHO SUMMARY CỦA BIỂU ĐỒ THẬP KỶ (DECADE) */
           .decade-summary { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 12px 8px; margin-bottom: 12px; border-bottom: 1px dashed rgba(0,0,0,0.08);}
           .d-sum-item { display: flex; flex-direction: column; }
           .d-sum-item:nth-child(1) { align-items: flex-start; }
@@ -1316,9 +1356,11 @@
           @keyframes pulseColor { 0% { color: #f59e0b; text-shadow: 0 0 0px rgba(245,158,11,0); transform: translateX(-50%) scale(1); } 50% { color: var(--text-red); text-shadow: 0 0 6px rgba(220,38,38,0.3); transform: translateX(-50%) scale(1.15); } 100% { color: #f59e0b; text-shadow: 0 0 0px rgba(245,158,11,0); transform: translateX(-50%) scale(1); } }
           .label-active { font-weight: 900 !important; animation: pulseColor 1.5s infinite ease-in-out; opacity: 1 !important;}
           
+          /* Cải tiến: Thêm Drop shadow cho biểu đồ dây để nổi bật hơn */
           .svg-overlay { position: absolute; top: -2px; left: -2px; width: calc(100% + 4px); height: calc(100% + 4px); pointer-events: none; z-index: 5; overflow: hidden; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
+          .svg-overlay polyline { filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.4)); }
           .dots-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 6;}
-          .chart-dot { position: absolute; width: 3px; height: 3px; background: var(--block-bg); border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+          .chart-dot { position: absolute; width: 3px; height: 3px; background: var(--block-bg); border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
         </style>
 
         <div class="main-card-header">
