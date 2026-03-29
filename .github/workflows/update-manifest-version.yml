@@ -29,8 +29,8 @@ jobs:
       - name: Cập nhật file manifest.json
         run: |
           # Cập nhật đường dẫn tới file manifest.json của bạn ở dòng dưới
-          # Ví dụ: custom_components/am_lich_viet_nam/manifest.json
-          MANIFEST_PATH="custom_components/am_lich_viet_nam/manifest.json"
+          # Ví dụ: custom_components/electricity_consumption_tracker/manifest.json
+          MANIFEST_PATH="custom_components/electricity_consumption_tracker/manifest.json"
           
           # Dùng công cụ jq để sửa file JSON một cách an toàn
           jq '.version = env.VERSION' $MANIFEST_PATH > tmp.json && mv tmp.json $MANIFEST_PATH
