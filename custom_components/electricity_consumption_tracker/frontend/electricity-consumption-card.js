@@ -713,7 +713,7 @@
         if (!this._loadStartTime) this._loadStartTime = Date.now();
         
         // Đợi 8 giây, nếu vẫn ko có thì báo đỏ (người dùng chưa setup hoặc gỡ tracker)
-        if (Date.now() - this._loadStartTime > 20000) {
+        if (Date.now() - this._loadStartTime > 8000) {
             this.card.innerHTML = `
                 <div style="padding: 24px 16px; text-align: center; border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px dashed rgba(220, 38, 38, 0.3);">
                     <ha-icon icon="mdi:alert-circle-outline" style="color: #dc2626; font-size: 32px; margin-bottom: 8px;"></ha-icon>
@@ -1407,8 +1407,8 @@
           .bar-col:hover .bar-val, .bar-col:focus-within .bar-val, .bar-group > div:hover .bar-val, .bar-group > div:focus-within .bar-val { z-index: 100; background: var(--block-bg) !important; padding: 2px 4px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); transform-origin: 50% 100%; opacity: 1;}
 
           .bar-col:hover .bar-val-daily { transform: translateX(-50%) translateY(-20px) rotate(0deg) scale(2); color: var(--text-main) !important; }
-          .bar-col:hover .bar-val-vnd { left: 50%; transform: translateX(-50%) translateY(-38px) rotate(0deg) scale(2); color: var(--text-red) !important; z-index: 101; }
-          .bar-col:hover .bar-val-kwh { left: 50%; transform: translateX(-50%) translateY(-12px) rotate(0deg) scale(2); color: var(--text-main) !important; z-index: 100;}
+          .bar-col:hover .bar-val-vnd { left: 0%; transform: translateX(-50%) translateY(-40px) rotate(0deg) scale(2); color: var(--text-red) !important; z-index: 101; }
+          .bar-col:hover .bar-val-kwh { left: 100%; transform: translateX(-50%) translateY(-5px) rotate(0deg) scale(2); color: var(--text-main) !important; z-index: 100;}
 
           .bar-label { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: clamp(8px, 2vw, 10px); font-weight: 600; color: var(--text-main); opacity: 0.7; margin-top: 0; text-align: center; width: 100%;}
           
