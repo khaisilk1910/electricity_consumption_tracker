@@ -52,8 +52,8 @@
         { id: 'barKwh2', label: 'Cột kWh (Đáy)', default: '#1e3a8a' },
         { id: 'barVnd1', label: 'Cột VNĐ (Đỉnh)', default: '#10b981' },
         { id: 'barVnd2', label: 'Cột VNĐ (Đáy)', default: '#047857' },
-        { id: 'lineKwh', label: 'Line kWh (Năm)', default: '#ff3366' }, // Hồng đỏ sáng
-        { id: 'lineVnd', label: 'Line VNĐ (Năm)', default: '#ffcc00' }, // Vàng tươi
+        { id: 'lineKwh', label: 'Line kWh (Năm)', default: '#ff3366' }, 
+        { id: 'lineVnd', label: 'Line VNĐ (Năm)', default: '#ffcc00' }, 
         { id: 'lineMonth', label: 'Line (Tháng)', default: '#ff3366' } 
       ];
 
@@ -489,9 +489,9 @@
       this._selectedYear = null;
       this._selectedMonth = null;
       
-      this._activeTab = 'overview'; // 'overview' | 'search'
+      this._activeTab = 'overview'; 
       this._formYear = null;
-      this._formMonth = ''; // Rỗng = Cả năm
+      this._formMonth = ''; 
       this._searchYear = null;
       this._searchMonth = null;
       this._hasSearched = false;
@@ -502,6 +502,10 @@
       this._availableInstances = [];
       this._currentEntityId = null;
       this._lastHtml = ""; 
+      
+      // Biến phục vụ tối ưu hóa Load
+      this._initialized = false;
+      this._loadStartTime = null;
     }
 
     setConfig(config) {
@@ -514,11 +518,35 @@
       }
     }
 
+    // TỐI ƯU HÓA LUỒNG SET HASS - CHỐNG GIẬT LAG KHI LOAD
     set hass(hass) {
+      const oldHass = this._hass;
       this._hass = hass;
-      this.scanForInstances();
-      this.processData();
-      this.updateView();
+      
+      // Lần đầu tiên chạy
+      if (!this._initialized) {
+        this.scanForInstances();
+        this.processData();
+        this.updateView();
+        this._initialized = true;
+        return;
+      }
+
+      // Nếu chưa tìm thấy entity nào (HA khởi động chậm), thỉnh thoảng quét lại
+      if (!this._currentEntityId || this._availableInstances.length === 0) {
+        this.scanForInstances();
+        if (this._availableInstances.length > 0) {
+          this.processData();
+        }
+        this.updateView(); // Vẫn gọi để xử lý hiệu ứng loading timeout
+        return;
+      }
+
+      // CHỈ xử lý lại dữ liệu khi chính thẻ cấu hình của chúng ta thay đổi state
+      if (oldHass && oldHass.states[this._currentEntityId] !== hass.states[this._currentEntityId]) {
+        this.processData();
+        this.updateView();
+      }
     }
 
     startResetTimer() {
@@ -680,10 +708,41 @@
     updateView() {
       if (!this._hass || !this.card) return;
 
+      // THÊM LOGIC KIỂM TRA ĐANG LOAD HOẶC LỖI
       if (this._availableInstances.length === 0) {
-          this.card.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc2626; font-weight: bold;">Chưa tìm thấy dữ liệu từ Tracker.</div>`;
-          return;
+        if (!this._loadStartTime) this._loadStartTime = Date.now();
+        
+        // Đợi 8 giây, nếu vẫn ko có thì báo đỏ (người dùng chưa setup hoặc gỡ tracker)
+        if (Date.now() - this._loadStartTime > 8000) {
+            this.card.innerHTML = `
+                <div style="padding: 24px 16px; text-align: center; border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px dashed rgba(220, 38, 38, 0.3);">
+                    <ha-icon icon="mdi:alert-circle-outline" style="color: #dc2626; font-size: 32px; margin-bottom: 8px;"></ha-icon>
+                    <div style="color: #dc2626; font-weight: bold; font-size: 14px;">Chưa tìm thấy dữ liệu từ Tracker.</div>
+                    <div style="color: #ef4444; font-size: 12px; margin-top: 4px;">Vui lòng kiểm tra lại cấu hình sensor trong HA.</div>
+                </div>`;
+        } else {
+            // Hiệu ứng Loading đẹp mắt trong lúc chờ HA khởi động data
+            this.card.innerHTML = `
+                <style>
+                    .ha-card-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 16px; min-height: 150px; }
+                    .loader-spinner { width: 36px; height: 36px; border: 3px solid var(--divider-color, rgba(120, 120, 120, 0.2)); border-top-color: #3b82f6; border-radius: 50%; animation: ha-spin 1s linear infinite; }
+                    .loader-text { font-family: sans-serif; font-size: 14px; font-weight: 600; color: var(--secondary-text-color, #888); animation: ha-pulse 1.5s ease-in-out infinite; }
+                    @keyframes ha-spin { to { transform: rotate(360deg); } }
+                    @keyframes ha-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+                </style>
+                <div class="ha-card-loader">
+                    <div class="loader-spinner"></div>
+                    <div class="loader-text">Đang đồng bộ dữ liệu Điện năng...</div>
+                </div>
+            `;
+            // Kích hoạt kiểm tra lại sau 1s để mốc thời gian 8s được đánh giá lại
+            setTimeout(() => { if (this._availableInstances.length === 0) this.updateView(); }, 1000);
+        }
+        return;
+      } else {
+        this._loadStartTime = null; // Đã load xong, xóa cờ thời gian
       }
+
       if (!this._currentEntityId) return;
 
       const totalState = this._hass.states[this._currentEntityId];
@@ -1356,7 +1415,6 @@
           @keyframes pulseColor { 0% { color: #f59e0b; text-shadow: 0 0 0px rgba(245,158,11,0); transform: translateX(-50%) scale(1); } 50% { color: var(--text-red); text-shadow: 0 0 6px rgba(220,38,38,0.3); transform: translateX(-50%) scale(1.15); } 100% { color: #f59e0b; text-shadow: 0 0 0px rgba(245,158,11,0); transform: translateX(-50%) scale(1); } }
           .label-active { font-weight: 900 !important; animation: pulseColor 1.5s infinite ease-in-out; opacity: 1 !important;}
           
-          /* Cải tiến: Thêm Drop shadow cho biểu đồ dây để nổi bật hơn */
           .svg-overlay { position: absolute; top: -2px; left: -2px; width: calc(100% + 4px); height: calc(100% + 4px); pointer-events: none; z-index: 5; overflow: hidden; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
           .svg-overlay polyline { filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.4)); }
           .dots-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 6;}
