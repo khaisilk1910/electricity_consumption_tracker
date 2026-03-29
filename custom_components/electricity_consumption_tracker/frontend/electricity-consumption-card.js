@@ -46,7 +46,6 @@
       const currentTitle = conf.title || "";
       const currentIcon = conf.icon || "";
 
-      // Đã đổi màu mặc định của Line để khác biệt hoàn toàn với Cột xanh
       const chartColorFields = [
         { id: 'barKwh1', label: 'Cột kWh (Đỉnh)', default: '#3b82f6' },
         { id: 'barKwh2', label: 'Cột kWh (Đáy)', default: '#1e3a8a' },
@@ -94,7 +93,6 @@
         </style>
 
         <div class="editor-container">
-          
           <div class="section">
             <div class="section-title no-collapse">
               <div class="title-left">⚙️ Cài đặt chung</div>
@@ -503,7 +501,6 @@
       this._currentEntityId = null;
       this._lastHtml = ""; 
       
-      // Biến phục vụ tối ưu hóa Load
       this._initialized = false;
       this._loadStartTime = null;
     }
@@ -518,12 +515,10 @@
       }
     }
 
-    // TỐI ƯU HÓA LUỒNG SET HASS - CHỐNG GIẬT LAG KHI LOAD
     set hass(hass) {
       const oldHass = this._hass;
       this._hass = hass;
       
-      // Lần đầu tiên chạy
       if (!this._initialized) {
         this.scanForInstances();
         this.processData();
@@ -532,17 +527,15 @@
         return;
       }
 
-      // Nếu chưa tìm thấy entity nào (HA khởi động chậm), thỉnh thoảng quét lại
       if (!this._currentEntityId || this._availableInstances.length === 0) {
         this.scanForInstances();
         if (this._availableInstances.length > 0) {
           this.processData();
         }
-        this.updateView(); // Vẫn gọi để xử lý hiệu ứng loading timeout
+        this.updateView();
         return;
       }
 
-      // CHỈ xử lý lại dữ liệu khi chính thẻ cấu hình của chúng ta thay đổi state
       if (oldHass && oldHass.states[this._currentEntityId] !== hass.states[this._currentEntityId]) {
         this.processData();
         this.updateView();
@@ -632,10 +625,12 @@
     render() {
       if (!this.card) {
         this.card = document.createElement('ha-card');
-        this.card.style.padding = '6px 12px 12px 12px'; 
+        // GIẢM PADDING THẺ CHÍNH ĐỂ CÓ THÊM KHÔNG GIAN
+        this.card.style.padding = '8px 8px 12px 8px'; 
         this.card.style.borderRadius = 'var(--ha-card-border-radius, 16px)'; 
         this.card.style.isolation = 'isolate'; 
         this.card.style.position = 'relative';
+        this.card.style.boxSizing = 'border-box';
 
         this.shadowRoot.appendChild(this.card);
 
@@ -708,11 +703,9 @@
     updateView() {
       if (!this._hass || !this.card) return;
 
-      // THÊM LOGIC KIỂM TRA ĐANG LOAD HOẶC LỖI
       if (this._availableInstances.length === 0) {
         if (!this._loadStartTime) this._loadStartTime = Date.now();
         
-        // Đợi 8 giây, nếu vẫn ko có thì báo đỏ (người dùng chưa setup hoặc gỡ tracker)
         if (Date.now() - this._loadStartTime > 8000) {
             this.card.innerHTML = `
                 <div style="padding: 24px 16px; text-align: center; border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px dashed rgba(220, 38, 38, 0.3);">
@@ -721,7 +714,6 @@
                     <div style="color: #ef4444; font-size: 12px; margin-top: 4px;">Vui lòng kiểm tra lại cấu hình sensor trong HA.</div>
                 </div>`;
         } else {
-            // Hiệu ứng Loading đẹp mắt trong lúc chờ HA khởi động data
             this.card.innerHTML = `
                 <style>
                     .ha-card-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 16px; min-height: 150px; }
@@ -735,12 +727,11 @@
                     <div class="loader-text">Đang đồng bộ dữ liệu Điện năng...</div>
                 </div>
             `;
-            // Kích hoạt kiểm tra lại sau 1s để mốc thời gian 8s được đánh giá lại
             setTimeout(() => { if (this._availableInstances.length === 0) this.updateView(); }, 1000);
         }
         return;
       } else {
-        this._loadStartTime = null; // Đã load xong, xóa cờ thời gian
+        this._loadStartTime = null; 
       }
 
       if (!this._currentEntityId) return;
@@ -757,9 +748,6 @@
       const displayTitle = conf.title || "Thống kê Điện năng";
       const configIcon = conf.icon || "mdi:transmission-tower";
       
-      // ==========================================
-      // THUẬT TOÁN NỀN & AUTO CONTRAST 
-      // ==========================================
       const applyOpacityToGradientStr = (str, opacity) => {
           return str.replace(/#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\b/gi, (match) => hexToRgba(match, opacity));
       };
@@ -821,8 +809,8 @@
       let c_barK2 = conf.barKwh2 || '#1e3a8a';
       let c_barV1 = conf.barVnd1 || '#10b981';
       let c_barV2 = conf.barVnd2 || '#047857';
-      let c_lineK = conf.lineKwh || '#ff3366'; // Hồng/Đỏ mặc định để dễ nhìn
-      let c_lineV = conf.lineVnd || '#ffcc00'; // Vàng tươi mặc định
+      let c_lineK = conf.lineKwh || '#ff3366'; 
+      let c_lineV = conf.lineVnd || '#ffcc00'; 
       let c_lineM = conf.lineMonth || '#ff3366';
 
       if (conf.auto_contrast) {
@@ -899,14 +887,13 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#E65100'; }
                   else { c_red = '#E64A19'; }
                   
-                  // Bảng màu chéo cực đậm cho Light Theme (Line nổi rực rỡ so với cột)
                   const palettesLight = {
-                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'}, // Blue bar -> Strong Red line
-                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'}, // Green bar -> Strong Purple line
-                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'}, // Cyan bar -> Strong Rose line
-                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'}, // Purple bar -> Strong Orange line
-                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'}, // Orange bar -> Strong Blue line
-                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'}  // Pink bar -> Strong Emerald line
+                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'},
+                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'},
+                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'},
+                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'},
+                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'},
+                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'}
                   };
                   c_barK1 = palettesLight[chartPalette.kwh][1]; c_barK2 = palettesLight[chartPalette.kwh][2]; c_lineK = palettesLight[chartPalette.kwh].l;
                   c_barV1 = palettesLight[chartPalette.vnd][1]; c_barV2 = palettesLight[chartPalette.vnd][2]; c_lineV = palettesLight[chartPalette.vnd].l;
@@ -923,14 +910,13 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#C6FF00'; }
                   else { c_red = '#FFD54F'; }
 
-                  // Bảng màu Neon chéo cực sáng cho Dark Theme (Line phát sáng so với cột)
                   const palettesDark = {
-                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'}, // Blue bar -> Neon Yellow line
-                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'}, // Green bar -> Neon Pink line
-                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'}, // Cyan bar -> Neon Orange line
-                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'}, // Purple bar -> Neon Green line
-                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'}, // Orange bar -> Neon Cyan line
-                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'}  // Pink bar -> Neon Yellow line
+                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'},
+                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'},
+                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'},
+                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'},
+                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'},
+                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'}
                   };
                   c_barK1 = palettesDark[chartPalette.kwh][1]; c_barK2 = palettesDark[chartPalette.kwh][2]; c_lineK = palettesDark[chartPalette.kwh].l;
                   c_barV1 = palettesDark[chartPalette.vnd][1]; c_barV2 = palettesDark[chartPalette.vnd][2]; c_lineV = palettesDark[chartPalette.vnd].l;
@@ -944,10 +930,6 @@
       const iconHtml = configIcon.includes(":") 
           ? `<ha-icon icon="${configIcon}"></ha-icon>` 
           : `<span class="emoji-icon">${configIcon}</span>`;
-
-      // ==========================================
-      // HELPER FUNCTIONS ĐỂ TẠO CÁC BIỂU ĐỒ & UI
-      // ==========================================
 
       const buildMonthChart = (y, m, isSearchMode = false) => {
         const mState = this._hass.states[`${this.baseSlug}_thang_${m}_${y}`];
@@ -1008,19 +990,19 @@
           <div class="chart-section">
             <div class="chart-header">
               <div class="chart-title">
-                <span><ha-icon icon="mdi:chart-bar" style="font-size: clamp(18px, 4vw, 22px); color:#3b82f6;"></ha-icon> Chi tiết T${m}/${y}</span>
+                <span><ha-icon icon="mdi:chart-bar" style="font-size: clamp(16px, 4vw, 20px); color:#3b82f6;"></ha-icon> Chi tiết T${m}/${y}</span>
               </div>
               <div class="chart-stats">
                 <div class="hover-zap" style="cursor: default;">
-                  <div class="c-stat-val primary">${formatNumber(m_kwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size:16px; margin-left: 4px;"></ha-icon></div>
+                  <div class="c-stat-val primary">${formatNumber(m_kwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size:14px; margin-left: 2px;"></ha-icon></div>
                   <div class="stat-label">Sản lượng</div>
                 </div>
                 <div class="hover-fly" style="cursor: default;">
-                  <div class="c-stat-val money">${formatMoney(m_truoc)} <span class="emoji-money" style="font-size: 16px; margin-left: 4px;">💸</span></div>
+                  <div class="c-stat-val money">${formatMoney(m_truoc)} <span class="emoji-money" style="font-size: 14px; margin-left: 2px;">💸</span></div>
                   <div class="stat-label">Trước VAT</div>
                 </div>
                 <div class="hover-fly" style="cursor: default;">
-                  <div class="c-stat-val money">${formatMoney(m_sau)} <span class="emoji-money" style="font-size: 16px; margin-left: 4px;">💸</span></div>
+                  <div class="c-stat-val money">${formatMoney(m_sau)} <span class="emoji-money" style="font-size: 14px; margin-left: 2px;">💸</span></div>
                   <div class="stat-label">Sau VAT</div>
                 </div>
               </div>
@@ -1127,19 +1109,19 @@
           <div class="chart-section">
             <div class="chart-header">
               <div class="chart-title">
-                <span><ha-icon icon="mdi:chart-timeline-variant" style="font-size: clamp(18px, 4vw, 22px); color:#10b981;"></ha-icon> Thống kê ${y}</span>
+                <span><ha-icon icon="mdi:chart-timeline-variant" style="font-size: clamp(16px, 4vw, 20px); color:#10b981;"></ha-icon> Thống kê ${y}</span>
               </div>
               <div class="chart-stats">
                 <div class="hover-zap" style="cursor: default;">
-                  <div class="c-stat-val primary">${formatNumber(y_kwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size:16px; margin-left: 4px;"></ha-icon></div>
+                  <div class="c-stat-val primary">${formatNumber(y_kwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size:14px; margin-left: 2px;"></ha-icon></div>
                   <div class="stat-label">Sản lượng</div>
                 </div>
                 <div class="hover-fly" style="cursor: default;">
-                  <div class="c-stat-val money">${formatMoney(y_truoc)} <span class="emoji-money" style="font-size: 16px; margin-left: 4px;">💸</span></div>
+                  <div class="c-stat-val money">${formatMoney(y_truoc)} <span class="emoji-money" style="font-size: 14px; margin-left: 2px;">💸</span></div>
                   <div class="stat-label">Trước VAT</div>
                 </div>
                 <div class="hover-fly" style="cursor: default;">
-                  <div class="c-stat-val money">${formatMoney(y_sau)} <span class="emoji-money" style="font-size: 16px; margin-left: 4px;">💸</span></div>
+                  <div class="c-stat-val money">${formatMoney(y_sau)} <span class="emoji-money" style="font-size: 14px; margin-left: 2px;">💸</span></div>
                   <div class="stat-label">Sau VAT</div>
                 </div>
               </div>
@@ -1182,7 +1164,6 @@
           }
 
           return chunks.map((chunk, chunkIdx) => {
-              // TÍNH TỔNG CỦA CẢ CHU KỲ
               let totalKwh = 0;
               let totalTruocVat = 0;
               let totalSauVat = 0;
@@ -1196,7 +1177,6 @@
                       truocVat = yState.attributes.tong_tien_truoc_thue || 0;
                   }
                   
-                  // Cộng dồn vào biến tổng
                   totalKwh += kwh;
                   totalTruocVat += truocVat;
                   totalSauVat += vnd;
@@ -1228,29 +1208,28 @@
 
               let titleSpan = chunk.length > 1 ? `${chunk[0]} - ${chunk[chunk.length-1]}` : `${chunk[0]}`;
 
-              // TẠO HTML THANH TỔNG HỢP (SUMMARY UI)
               let summaryHtml = `
                 <div class="decade-summary">
                   <div class="d-sum-item hover-zap" style="cursor: default;">
-                    <div class="d-sum-val">${formatNumber(totalKwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size: clamp(16px, 4vw, 20px);"></ha-icon></div>
+                    <div class="d-sum-val">${formatNumber(totalKwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size: clamp(14px, 4vw, 18px);"></ha-icon></div>
                     <div class="d-sum-label">Sản lượng</div>
                   </div>
                   <div class="d-sum-item hover-fly" style="cursor: default;">
-                    <div class="d-sum-val money">${formatMoney(totalTruocVat)} <span class="emoji-money" style="font-size: clamp(16px, 4vw, 20px);">💸</span></div>
+                    <div class="d-sum-val money">${formatMoney(totalTruocVat)} <span class="emoji-money" style="font-size: clamp(14px, 4vw, 18px);">💸</span></div>
                     <div class="d-sum-label">Trước VAT</div>
                   </div>
                   <div class="d-sum-item hover-fly" style="cursor: default;">
-                    <div class="d-sum-val money">${formatMoney(totalSauVat)} <span class="emoji-money" style="font-size: clamp(16px, 4vw, 20px);">💸</span></div>
+                    <div class="d-sum-val money">${formatMoney(totalSauVat)} <span class="emoji-money" style="font-size: clamp(14px, 4vw, 18px);">💸</span></div>
                     <div class="d-sum-label">Sau VAT</div>
                   </div>
                 </div>
               `;
 
               return `
-                <div class="chart-section" style="margin-top: 16px;">
+                <div class="chart-section" style="margin-top: 10px;">
                   <div class="chart-header" style="margin-bottom: 8px; border-bottom: none; padding-bottom: 0;">
                     <div class="chart-title">
-                      <span><ha-icon icon="mdi:history" style="font-size: clamp(18px, 4vw, 22px); color:#8b5cf6;"></ha-icon> Tổng quan ${titleSpan}</span>
+                      <span><ha-icon icon="mdi:history" style="font-size: clamp(16px, 4vw, 20px); color:#8b5cf6;"></ha-icon> Tổng quan ${titleSpan}</span>
                     </div>
                   </div>
                   
@@ -1282,10 +1261,6 @@
           }).join('');
       };
 
-      // ==========================================
-      // LẮP RÁP UI CHÍNH
-      // ==========================================
-
       let html = `
         <style>
           :host {
@@ -1305,51 +1280,55 @@
           }
 
           .main-card-header { 
-            display: flex; align-items: flex-end; gap: 12px; font-weight: 800; font-size: clamp(20px, 5vw, 24px); color: var(--text-main); margin-top: 0; margin-bottom: 12px; padding-left: 4px; line-height: 1; 
+            display: flex; align-items: flex-end; gap: 8px; font-weight: 800; font-size: clamp(16px, 4vw, 20px); color: var(--text-main); margin-top: 0; margin-bottom: 10px; padding-left: 2px; line-height: 1.1; 
           }
-          .main-card-header ha-icon, .main-card-header .emoji-icon { font-size: clamp(28px, 7vw, 36px); line-height: 1; margin-bottom: -4px; color: #f59e0b; }
+          .main-card-header ha-icon, .main-card-header .emoji-icon { font-size: clamp(24px, 6vw, 30px); line-height: 1; margin-bottom: -2px; color: #f59e0b; }
           
           .top-dashboard, .chart-section, .control-pill, .search-form-box { 
             background: var(--block-bg); border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
           }
-          .top-dashboard, .search-form-box { padding: 12px; margin-bottom: 12px; }
-          .chart-section { padding: 12px; margin-bottom: 12px; position: relative; }
-          .control-pill { border-radius: 50px; display: flex; align-items: center; justify-content: space-between; padding: 2px; }
+          .top-dashboard, .search-form-box { padding: 10px; margin-bottom: 10px; }
+          .chart-section { padding: 10px; margin-bottom: 10px; position: relative; }
           
-          .header-tools { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;}
+          /* FIX BỊ TRÀN DO WIDTH PILL */
+          .control-pill { border-radius: 50px; display: flex; align-items: center; justify-content: space-between; padding: 2px; min-width: 0; width: 100%; box-sizing: border-box; overflow: hidden; }
+          
+          .header-tools { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;}
           .tabs-container { display: flex; background: rgba(0,0,0,0.1); padding: 4px; border-radius: 10px; gap: 4px; border: 1px solid rgba(0,0,0,0.05);}
-          .tab-item { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--text-main); opacity: 0.6; cursor: pointer; transition: all 0.3s; white-space: nowrap;}
+          .tab-item { padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; color: var(--text-main); opacity: 0.6; cursor: pointer; transition: all 0.3s; white-space: nowrap;}
           .tab-item:hover { opacity: 0.8; }
           .tab-item.active { background: var(--block-bg); opacity: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 
+          /* FIX TRÀN SENSOR DROPDOWN MÀN NHỎ */
           select.main-sel {
-            background: rgba(0,0,0,0.4); color: #ffffff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 700; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;
+            background: rgba(0,0,0,0.4); color: #ffffff; border: none; border-radius: 8px; padding: 6px 24px 6px 8px; font-size: 12px; font-weight: 700; outline: none; cursor: pointer; -webkit-appearance: none; appearance: none;
             background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-            background-repeat: no-repeat; background-position: right 10px center; background-size: 14px; transition: all 0.2s ease; padding-right: 30px;
+            background-repeat: no-repeat; background-position: right 6px center; background-size: 12px; transition: all 0.2s ease;
+            max-width: 100%; width: 100%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; flex: 1; min-width: 120px; box-sizing: border-box;
           }
           select.main-sel:hover { background: rgba(0,0,0,0.6); }
 
           /* SEARCH UI */
-          .s-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center;}
-          select.s-input { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: var(--block-bg); color: var(--text-main); font-weight: 600; font-size: 13px; outline: none; }
-          .btn-search { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.2s; font-size: 13px; white-space: nowrap;}
+          .s-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: center;}
+          select.s-input { width: 100%; padding: 6px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: var(--block-bg); color: var(--text-main); font-weight: 600; font-size: 12px; outline: none; text-overflow: ellipsis; }
+          .btn-search { background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.2s; font-size: 12px; white-space: nowrap;}
           .btn-search:hover { background: #2563eb; }
 
-          .search-stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
-          .s-stat-card { background: var(--block-bg); border-radius: 8px; padding: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: 60px;}
-          .s-label { font-size: 11px; font-weight: 700; color: var(--text-main); opacity: 0.7; margin-bottom: 4px; }
-          .s-val { font-size: 13px; font-weight: 800; color: var(--text-main); line-height: 1.3; }
-          .s-val .primary { color: #3b82f6; font-size: 15px; }
-          .s-val .money { color: var(--text-red); font-size: 15px; }
+          .search-stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 10px; }
+          .s-stat-card { background: var(--block-bg); border-radius: 8px; padding: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: 50px;}
+          .s-label { font-size: 10px; font-weight: 700; color: var(--text-main); opacity: 0.7; margin-bottom: 2px; }
+          .s-val { font-size: 12px; font-weight: 800; color: var(--text-main); line-height: 1.2; }
+          .s-val .primary { color: #3b82f6; font-size: 13px; }
+          .s-val .money { color: var(--text-red); font-size: 13px; }
 
           /* STAT BOX OVERVIEW */
-          .global-stats-compact { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; text-align: center; width: 100%; box-sizing: border-box; }
+          .global-stats-compact { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; text-align: center; width: 100%; box-sizing: border-box; }
           .stat-box { display: flex; flex-direction: column; justify-content: center; cursor: default; transition: background 0.3s; border-radius: 8px; padding: 4px 2px; min-width: 0; overflow: hidden; }
           .stat-box.primary { border-right: 1px solid rgba(0,0,0,0.05); }
-          .stat-box.primary .stat-value { color: var(--text-main); font-size: clamp(14px, 4vw, 22px); }
-          .stat-value { font-size: clamp(11px, 3.2vw, 17px); font-weight: 800; color: var(--text-red); display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px; line-height: 1.1;}
-          .stat-unit { font-size: clamp(9px, 2.5vw, 13px); color: var(--text-main); opacity: 0.7; font-weight: 600; white-space: nowrap;}
-          .stat-label { font-size: clamp(9px, 2.vw, 11px); font-weight: 700; color: var(--text-main); opacity: 0.6; margin-top: 2px; letter-spacing: 0.1px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; width: 100%;}
+          .stat-box.primary .stat-value { color: var(--text-main); font-size: clamp(12px, 3.5vw, 18px); }
+          .stat-value { font-size: clamp(10px, 3vw, 15px); font-weight: 800; color: var(--text-red); display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px; line-height: 1.1;}
+          .stat-unit { font-size: clamp(8px, 2vw, 11px); color: var(--text-main); opacity: 0.7; font-weight: 600; white-space: nowrap;}
+          .stat-label { font-size: clamp(8px, 2vw, 10px); font-weight: 700; color: var(--text-main); opacity: 0.6; margin-top: 2px; letter-spacing: 0.1px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; width: 100%;}
           .emoji-money, .icon-kwh { flex-shrink: 0; }
           
           .icon-kwh { color: #f59e0b; transition: all 0.3s; transform-origin: center; display: inline-block; }
@@ -1360,34 +1339,35 @@
           @keyframes flyAwayHover { 0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; } 30% { transform: translate(10px, -15px) scale(1.3) rotate(15deg); opacity: 0.8; } 45% { transform: translate(25px, -30px) scale(0.5) rotate(30deg); opacity: 0; } 46% { transform: translate(-20px, 15px) scale(0); opacity: 0; } 100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; } }
           .hover-fly:hover .emoji-money { animation: flyAwayHover 0.8s ease-in-out forwards; }
           
-          .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-          .control-content { display: flex; align-items: center; gap: 4px; padding: 0 6px; flex: 1; justify-content: center; border-left: 1px solid rgba(0,0,0,0.05); border-right: 1px solid rgba(0,0,0,0.05);}
-          .ctrl-icon { font-size: clamp(14px, 3.5vw, 18px); color: var(--text-main); }
+          /* FIX GẬP & TRÀN GRID CONTROLS */
+          .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; width: 100%; box-sizing: border-box; }
+          .control-content { display: flex; align-items: center; gap: 2px; padding: 0 4px; flex: 1; min-width: 0; justify-content: center; border-left: 1px solid rgba(0,0,0,0.05); border-right: 1px solid rgba(0,0,0,0.05);}
+          .ctrl-icon { font-size: clamp(12px, 3.5vw, 16px); color: var(--text-main); flex-shrink: 0;}
           
-          select.styled-sel { background: transparent; border: none; font-weight: 800; font-size: clamp(13px, 3.5vw, 15px); color: var(--text-main); outline: none; cursor: pointer; text-align: center; -webkit-appearance: none; appearance: none; padding: 4px 22px 4px 8px; margin: 0; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 4px center; background-size: 14px; border-radius: 6px; transition: background-color 0.2s ease; }
+          select.styled-sel { flex: 1; min-width: 0; width: 100%; background: transparent; border: none; font-weight: 800; font-size: clamp(11px, 3vw, 14px); color: var(--text-main); outline: none; cursor: pointer; text-align: center; -webkit-appearance: none; appearance: none; padding: 4px 16px 4px 4px; margin: 0; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 2px center; background-size: 12px; border-radius: 6px; transition: background-color 0.2s ease; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
           select.styled-sel:hover { background-color: rgba(0,0,0,0.05); } 
           
-          .nav-btn { cursor: pointer; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; color: #3b82f6; transition: all 0.2s; user-select: none; background: transparent; }
+          .nav-btn { cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; color: #3b82f6; transition: all 0.2s; user-select: none; background: transparent; flex-shrink: 0;}
           .nav-btn:hover { background: rgba(59, 130, 246, 0.1); color: var(--text-main); }
-          .nav-btn ha-icon { font-size: 20px; }
+          .nav-btn ha-icon { font-size: 18px; }
 
-          .chart-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom: 8px; }
-          .chart-title { font-weight: 800; font-size: clamp(15px, 4vw, 18px); display: flex; align-items: flex-end; gap: 4px; color: var(--text-main); width: 100%; justify-content: space-between; margin-bottom: 4px;}
-          .chart-title span { display: flex; align-items: flex-end; gap: 6px; line-height: 1; }
+          .chart-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom: 6px; }
+          .chart-title { font-weight: 800; font-size: clamp(13px, 3.5vw, 16px); display: flex; align-items: flex-end; gap: 4px; color: var(--text-main); width: 100%; justify-content: space-between; margin-bottom: 2px;}
+          .chart-title span { display: flex; align-items: flex-end; gap: 4px; line-height: 1; }
           .chart-stats { display: flex; gap: 4px; text-align: right; width: 100%; justify-content: space-between; flex-wrap: wrap; }
-          .c-stat-val { font-size: clamp(11px, 3vw, 16px); font-weight: 800; display:flex; align-items:center; justify-content:flex-end; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px;}
+          .c-stat-val { font-size: clamp(10px, 2.8vw, 14px); font-weight: 800; display:flex; align-items:center; justify-content:flex-end; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px;}
           .c-stat-val.primary { color: var(--text-main); } .c-stat-val.money { color: var(--text-red); }   
           
-          .decade-summary { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 12px 8px; margin-bottom: 12px; border-bottom: 1px dashed rgba(0,0,0,0.08);}
+          .decade-summary { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 10px 8px; margin-bottom: 8px; border-bottom: 1px dashed rgba(0,0,0,0.08);}
           .d-sum-item { display: flex; flex-direction: column; }
           .d-sum-item:nth-child(1) { align-items: flex-start; }
           .d-sum-item:nth-child(2) { align-items: center; }
           .d-sum-item:nth-child(3) { align-items: flex-end; }
-          .d-sum-val { font-size: clamp(15px, 4.5vw, 22px); font-weight: 900; display: flex; align-items: center; gap: 4px; color: var(--text-main); letter-spacing: -0.5px; line-height: 1.1;}
+          .d-sum-val { font-size: clamp(13px, 4vw, 18px); font-weight: 900; display: flex; align-items: center; gap: 4px; color: var(--text-main); letter-spacing: -0.5px; line-height: 1.1;}
           .d-sum-val.money { color: var(--text-red); }
-          .d-sum-label { font-size: clamp(10px, 2.5vw, 12px); font-weight: 600; color: var(--text-main); opacity: 0.6; margin-top: 4px; }
+          .d-sum-label { font-size: clamp(9px, 2.5vw, 11px); font-weight: 600; color: var(--text-main); opacity: 0.6; margin-top: 2px; }
 
-          .chart-container { position: relative; height: 130px; margin-top: 50px; margin-bottom: 16px; }
+          .chart-container { position: relative; height: 110px; margin-top: 40px; margin-bottom: 12px; }
           .bar-chart { display: flex; align-items: flex-end; justify-content: space-between; height: 100%; gap: 0; position: relative; width: 100%;}
           .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; cursor: pointer; z-index: 2; transition: z-index 0.3s; }
           .bar-col:hover, .bar-col:focus-within { z-index: 50; }
@@ -1403,19 +1383,20 @@
           .bar-kwh { background: linear-gradient(180deg, var(--bar-k1) 0%, var(--bar-k2) 100%); border-radius: 3px 0 0 0; }
           .bar-vnd { background: linear-gradient(180deg, var(--bar-v1) 0%, var(--bar-v2) 100%); border-radius: 0 3px 0 0; }
 
-          .bar-val { position: absolute; top: -24px; font-size: 8px; font-weight: 800; color: var(--text-main); width: max-content; text-align: center; white-space: nowrap; left: 50%; transform: translateX(-50%) rotate(-45deg); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 5; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0.8;}
-          .bar-col:hover .bar-val, .bar-col:focus-within .bar-val, .bar-group > div:hover .bar-val, .bar-group > div:focus-within .bar-val { z-index: 100; background: var(--block-bg) !important; padding: 2px 4px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); transform-origin: 50% 100%; opacity: 1;}
+          /* FIX CHỮ BỊ ĐÈ CHÉO TRÊN MOBILE THÁNG 31 NGÀY */
+          .bar-val { position: absolute; top: -18px; font-size: 7.5px; font-weight: 800; color: var(--text-main); width: max-content; text-align: center; white-space: nowrap; left: 50%; transform: translateX(-50%) rotate(-65deg); letter-spacing: -0.3px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 5; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0.8;}
+          .bar-col:hover .bar-val, .bar-col:focus-within .bar-val, .bar-group > div:hover .bar-val, .bar-group > div:focus-within .bar-val { z-index: 100; background: var(--block-bg) !important; padding: 2px 4px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); transform-origin: 50% 100%; opacity: 1; letter-spacing: 0px;}
 
-          .bar-col:hover .bar-val-daily { transform: translateX(-50%) translateY(-20px) rotate(0deg) scale(2); color: var(--text-main) !important; }
-          .bar-col:hover .bar-val-vnd { left: 0%; transform: translateX(-50%) translateY(-40px) rotate(0deg) scale(2); color: var(--text-red) !important; z-index: 101; }
-          .bar-col:hover .bar-val-kwh { left: 100%; transform: translateX(-50%) translateY(-5px) rotate(0deg) scale(2); color: var(--text-main) !important; z-index: 100;}
+          .bar-col:hover .bar-val-daily { transform: translateX(-50%) translateY(-15px) rotate(0deg) scale(1.6); color: var(--text-main) !important; }
+          .bar-col:hover .bar-val-vnd { left: 0%; transform: translateX(-50%) translateY(-30px) rotate(0deg) scale(1.6); color: var(--text-red) !important; z-index: 101; }
+          .bar-col:hover .bar-val-kwh { left: 100%; transform: translateX(-50%) translateY(-5px) rotate(0deg) scale(1.6); color: var(--text-main) !important; z-index: 100;}
 
-          .bar-label { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: clamp(8px, 2vw, 10px); font-weight: 600; color: var(--text-main); opacity: 0.7; margin-top: 0; text-align: center; width: 100%;}
+          .bar-label { position: absolute; bottom: -14px; left: 50%; transform: translateX(-50%); font-size: clamp(7px, 1.8vw, 9px); font-weight: 600; color: var(--text-main); opacity: 0.7; margin-top: 0; text-align: center; width: 100%;}
           
           @keyframes pulseColor { 0% { color: #f59e0b; text-shadow: 0 0 0px rgba(245,158,11,0); transform: translateX(-50%) scale(1); } 50% { color: var(--text-red); text-shadow: 0 0 6px rgba(220,38,38,0.3); transform: translateX(-50%) scale(1.15); } 100% { color: #f59e0b; text-shadow: 0 0 0px rgba(245,158,11,0); transform: translateX(-50%) scale(1); } }
           .label-active { font-weight: 900 !important; animation: pulseColor 1.5s infinite ease-in-out; opacity: 1 !important;}
           
-          .svg-overlay { position: absolute; top: -2px; left: -2px; width: calc(100% + 4px); height: calc(100% + 4px); pointer-events: none; z-index: 5; overflow: hidden; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
+          .svg-overlay { position: absolute; top: -1px; left: -1px; width: calc(100% + 2px); height: calc(100% + 2px); pointer-events: none; z-index: 5; overflow: hidden; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
           .svg-overlay polyline { filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.4)); }
           .dots-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 6;}
           .chart-dot { position: absolute; width: 3px; height: 3px; background: var(--block-bg); border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
@@ -1441,9 +1422,6 @@
       `;
 
       if (this._activeTab === 'overview') {
-          // ==============================
-          // RENDER TAB: TỔNG QUAN
-          // ==============================
           const t_kwh = totalState.state;
           const t_truoc = totalState.attributes.tong_tien_tich_luy;
           const t_sau = totalState.attributes.tong_tien_tich_luy_sau_thue;
@@ -1494,9 +1472,6 @@
           html += buildYearChart(this._selectedYear, false);
 
       } else {
-          // ==============================
-          // RENDER TAB: TRA CỨU
-          // ==============================
           html += `
              <div class="search-form-box">
                 <div class="s-grid">
