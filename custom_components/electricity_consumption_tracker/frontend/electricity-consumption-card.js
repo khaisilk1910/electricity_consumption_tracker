@@ -732,7 +732,10 @@
                 </style>
                 <div class="ha-card-loader">
                     <div class="loader-spinner"></div>
-                    <div class="loader-text">Đang đồng bộ dữ liệu Điện năng...</div>
+                    <div class="loader-text">Đang đồng bộ dữ liệu Điện năng...
+                    <br>Vui lòng chờ dữ liệu đang được nạp
+                    <br>Nếu báo lỗi hãy F5 lại trang hoặc đóng trình duyệt và mở lại
+                    </div>
                 </div>
             `;
             // Kích hoạt kiểm tra lại sau 1s để mốc thời gian 8s được đánh giá lại
