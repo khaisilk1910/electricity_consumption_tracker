@@ -726,13 +726,14 @@
                 <style>
                     .ha-card-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 16px; min-height: 150px; }
                     .loader-spinner { width: 36px; height: 36px; border: 3px solid var(--divider-color, rgba(120, 120, 120, 0.2)); border-top-color: #3b82f6; border-radius: 50%; animation: ha-spin 1s linear infinite; }
-                    .loader-text { font-family: sans-serif; font-size: 14px; font-weight: 600; align-items: center; color: var(--secondary-text-color, #888); animation: ha-pulse 1.5s ease-in-out infinite; }
+                    .loader-text { font-family: sans-serif; font-size: 14px; font-weight: 600; color: var(--secondary-text-color, #888); animation: ha-pulse 1.5s ease-in-out infinite; }
                     @keyframes ha-spin { to { transform: rotate(360deg); } }
                     @keyframes ha-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
                 </style>
                 <div class="ha-card-loader">
                     <div class="loader-spinner"></div>
                     <div class="loader-text">Đang đồng bộ dữ liệu Điện năng...
+                    <br>Vui lòng chờ dữ liệu đang được nạp
                     <br>Nếu báo lỗi hãy F5 lại trang hoặc đóng trình duyệt và mở lại
                     </div>
                 </div>
@@ -1488,7 +1489,7 @@
                 <div class="control-content">
                   <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
                   <select id="sel-month" class="styled-sel">
-                    ${this._monthsList.map(m => `<option value="${m}" ${this._selectedMonth === m ? 'selected' : ''}>${m}</option>`).join('')}
+                    ${this._monthsList.map(m => `<option value="${m}" ${this._selectedMonth === m ? 'selected' : ''}>Tháng ${m}</option>`).join('')}
                   </select>
                 </div>
                 <div class="nav-btn btn-m-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
@@ -1507,7 +1508,7 @@
              <div class="search-form-box">
                 <div class="s-grid">
                     <select id="form-year" class="s-input">
-                        ${this._yearsList.map(y => `<option value="${y}" ${this._formYear === y ? 'selected' : ''}>${y}</option>`).join('')}
+                        ${this._yearsList.map(y => `<option value="${y}" ${this._formYear === y ? 'selected' : ''}>Năm ${y}</option>`).join('')}
                     </select>
                     <select id="form-month" class="s-input">
                         <option value="" ${this._formMonth === '' ? 'selected' : ''}>-- Cả năm --</option>
