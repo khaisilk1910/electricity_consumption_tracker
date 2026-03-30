@@ -1338,7 +1338,7 @@
 
           /* SEARCH UI */
           .s-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: clamp(4px, 1.5vw, 8px); align-items: center;}
-          select.s-input { width: 100%; padding: clamp(6px, 1.5vw, 8px) clamp(4px, 1vw, 8px); border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: var(--block-bg); color: var(--text-main); font-weight: 600; font-size: clamp(11px, 3vw, 13px); outline: none; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;}
+          select.s-input { width: 100%; padding: clamp(6px, 1.5vw, 8px) clamp(4px, 1vw, 8px); border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: var(--block-bg); color: var(--text-main); font-weight: 600; font-size: clamp(11px, 3vw, 13px); outline: none; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none;}
           .btn-search { background: #3b82f6; color: white; border: none; padding: clamp(6px, 1.5vw, 8px) clamp(8px, 2vw, 16px); border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.2s; font-size: clamp(11px, 3vw, 13px); white-space: nowrap;}
           .btn-search:hover { background: #2563eb; }
 
@@ -1353,7 +1353,7 @@
           .global-stats-compact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; text-align: center; width: 100%; box-sizing: border-box; }
           .stat-box { display: flex; flex-direction: column; justify-content: center; cursor: default; transition: background 0.3s; border-radius: 8px; padding: clamp(2px, 1vw, 4px) 2px; min-width: 0; overflow: hidden; }
           .stat-box.primary { border-right: 1px solid rgba(0,0,0,0.05); }
-          .stat-box.primary .stat-value { color: var(--text-main); font-size: clamp(15px, 4.5vw, 22px); }
+          .stat-box.primary .stat-value { color: var(--text-main); }
           .stat-value { font-size: clamp(12px, 3.5vw, 17px); font-weight: 800; color: var(--text-red); display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px; line-height: 1.1;}
           .stat-unit { font-size: clamp(10px, 2.5vw, 13px); color: var(--text-main); opacity: 0.7; font-weight: 600; white-space: nowrap;}
           .stat-label { font-size: clamp(10px, 2.5vw, 12px); font-weight: 700; color: var(--text-main); opacity: 0.6; margin-top: 2px; letter-spacing: 0.1px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; width: 100%;}
