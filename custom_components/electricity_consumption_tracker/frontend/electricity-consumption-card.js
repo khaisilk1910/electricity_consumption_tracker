@@ -1479,7 +1479,7 @@
                 <div class="control-content">
                   <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
                   <select id="sel-year" class="styled-sel">
-                    ${this._yearsList.map(y => `<option value="${y}" ${this._selectedYear === y ? 'selected' : ''}>${y}</option>`).join('')}
+                    ${this._yearsList.map(y => `<option value="${y}" ${this._selectedYear === y ? 'selected' : ''}>Năm ${y}</option>`).join('')}
                   </select>
                 </div>
                 <div class="nav-btn btn-y-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
@@ -1489,7 +1489,7 @@
                 <div class="control-content">
                   <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
                   <select id="sel-month" class="styled-sel">
-                    ${this._monthsList.map(m => `<option value="${m}" ${this._selectedMonth === m ? 'selected' : ''}>${m}</option>`).join('')}
+                    ${this._monthsList.map(m => `<option value="${m}" ${this._selectedMonth === m ? 'selected' : ''}>Tháng ${m}</option>`).join('')}
                   </select>
                 </div>
                 <div class="nav-btn btn-m-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
