@@ -713,7 +713,7 @@
         if (!this._loadStartTime) this._loadStartTime = Date.now();
         
         // Đợi 8 giây, nếu vẫn ko có thì báo đỏ (người dùng chưa setup hoặc gỡ tracker)
-        if (Date.now() - this._loadStartTime > 8000) {
+        if (Date.now() - this._loadStartTime > 20000) {
             this.card.innerHTML = `
                 <div style="padding: 24px 16px; text-align: center; border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px dashed rgba(220, 38, 38, 0.3);">
                     <ha-icon icon="mdi:alert-circle-outline" style="color: #dc2626; font-size: 32px; margin-bottom: 8px;"></ha-icon>
