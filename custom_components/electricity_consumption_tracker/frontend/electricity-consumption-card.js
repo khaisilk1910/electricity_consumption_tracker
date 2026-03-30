@@ -505,7 +505,6 @@
       
       // Biến phục vụ tối ưu hóa Load
       this._initialized = false;
-      this._loadStartTime = null;
     }
 
     setConfig(config) {
@@ -538,7 +537,7 @@
         if (this._availableInstances.length > 0) {
           this.processData();
         }
-        this.updateView(); // Vẫn gọi để xử lý hiệu ứng loading timeout
+        this.updateView(); 
         return;
       }
 
@@ -708,39 +707,23 @@
     updateView() {
       if (!this._hass || !this.card) return;
 
-      // THÊM LOGIC KIỂM TRA ĐANG LOAD HOẶC LỖI
+      // HIỂN THỊ LOADING VÔ THỜI HẠN CHỜ DỮ LIỆU
       if (this._availableInstances.length === 0) {
-        if (!this._loadStartTime) this._loadStartTime = Date.now();
-        
-        // Đợi 8 giây, nếu vẫn ko có thì báo đỏ (người dùng chưa setup hoặc gỡ tracker)
-        if (Date.now() - this._loadStartTime > 8000) {
-            this.card.innerHTML = `
-                <div style="padding: 24px 16px; text-align: center; border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px dashed rgba(220, 38, 38, 0.3);">
-                    <ha-icon icon="mdi:alert-circle-outline" style="color: #dc2626; font-size: 32px; margin-bottom: 8px;"></ha-icon>
-                    <div style="color: #dc2626; font-weight: bold; font-size: 14px;">Chưa tìm thấy dữ liệu từ Tracker.</div>
-                    <div style="color: #ef4444; font-size: 12px; margin-top: 4px;">Vui lòng kiểm tra lại cấu hình sensor trong HA.</div>
-                </div>`;
-        } else {
-            // Hiệu ứng Loading đẹp mắt trong lúc chờ HA khởi động data
             this.card.innerHTML = `
                 <style>
                     .ha-card-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 16px; min-height: 150px; }
                     .loader-spinner { width: 36px; height: 36px; border: 3px solid var(--divider-color, rgba(120, 120, 120, 0.2)); border-top-color: #3b82f6; border-radius: 50%; animation: ha-spin 1s linear infinite; }
-                    .loader-text { font-family: sans-serif; font-size: 14px; font-weight: 600; color: var(--secondary-text-color, #888); animation: ha-pulse 1.5s ease-in-out infinite; }
+                    .loader-text { font-family: sans-serif; font-size: 14px; font-weight: 600; color: var(--secondary-text-color, #888); animation: ha-pulse 1.5s ease-in-out infinite; text-align: center;}
+                    .loader-sub { font-size: 12px; font-weight: 400; opacity: 0.7; margin-top: 4px; }
                     @keyframes ha-spin { to { transform: rotate(360deg); } }
                     @keyframes ha-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
                 </style>
                 <div class="ha-card-loader">
                     <div class="loader-spinner"></div>
-                    <div class="loader-text">Đang đồng bộ dữ liệu Điện năng...</div>
+                    <div class="loader-text">Đang đồng bộ dữ liệu Điện năng...<div class="loader-sub">Vui lòng chờ. Quá trình này có thể mất vài chục giây sau khi khởi động Home Assistant.</div></div>
                 </div>
             `;
-            // Kích hoạt kiểm tra lại sau 1s để mốc thời gian 8s được đánh giá lại
-            setTimeout(() => { if (this._availableInstances.length === 0) this.updateView(); }, 1000);
-        }
-        return;
-      } else {
-        this._loadStartTime = null; // Đã load xong, xóa cờ thời gian
+            return;
       }
 
       if (!this._currentEntityId) return;
@@ -988,7 +971,6 @@
 
         let dotsHtmlDaily = pointsDaily.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineM}; background: ${c_lineM};"></div>`).join('');
 
-
         let searchStatsHtml = '';
         if (isSearchMode) {
             let avgKwh = validDaysCount > 0 ? (m_kwh / validDaysCount) : 0;
@@ -1225,8 +1207,8 @@
                 pointsVnd.push({x, y: y_coord}); return `${x},${y_coord}`;
               }).join(' ');
 
-              let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK};"></div>`).join('');
-              let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV};"></div>`).join('');
+              let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK}; background: ${c_lineK};"></div>`).join('');
+              let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV}; background: ${c_lineV};"></div>`).join('');
 
               let minYear = Math.min(...chunk);
               let maxYear = Math.max(...chunk);
