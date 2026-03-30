@@ -986,7 +986,8 @@
           pointsDaily.push({x, y: y_coord}); return `${x},${y_coord}`;
         }).filter(p => p !== null).join(' ');
 
-        let dotsHtmlDaily = pointsDaily.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineM};"></div>`).join('');
+        let dotsHtmlDaily = pointsDaily.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineM}; background: ${c_lineM};"></div>`).join('');
+
 
         let searchStatsHtml = '';
         if (isSearchMode) {
@@ -1028,7 +1029,7 @@
             
             <div class="chart-container">
               <svg class="svg-overlay" preserveAspectRatio="none" viewBox="0 0 100 100">
-                <polyline points="${polylinePointsDaily}" fill="none" stroke="${c_lineM}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                <polyline points="${polylinePointsDaily}" fill="none" stroke="${c_lineM}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
               <div class="dots-overlay">${dotsHtmlDaily}</div>
               <div class="bar-chart">
@@ -1104,8 +1105,8 @@
           pointsVnd.push({x, y: y_coord}); return `${x},${y_coord}`;
         }).filter(p => p !== null).join(' ');
 
-        let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK};"></div>`).join('');
-        let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV};"></div>`).join('');
+        let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK}; background: ${c_lineK};"></div>`).join('');
+        let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV}; background: ${c_lineV};"></div>`).join('');
 
         let searchStatsHtml = '';
         if (isSearchMode) {
@@ -1147,8 +1148,8 @@
 
             <div class="chart-container">
               <svg class="svg-overlay" preserveAspectRatio="none" viewBox="0 0 100 100">
-                <polyline points="${polylinePointsKwh}" fill="none" stroke="${c_lineK}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
-                <polyline points="${polylinePointsVnd}" fill="none" stroke="${c_lineV}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                <polyline points="${polylinePointsKwh}" fill="none" stroke="${c_lineK}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                <polyline points="${polylinePointsVnd}" fill="none" stroke="${c_lineV}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
               <div class="dots-overlay">${dotsKwhHtml}${dotsVndHtml}</div>
               <div class="bar-chart">
@@ -1178,7 +1179,8 @@
           
           let chunks = [];
           for (let i = 0; i < this._yearsList.length; i += 10) {
-              chunks.push(this._yearsList.slice(i, i + 10).reverse()); 
+              // Bỏ .reverse() để mảng giữ nguyên thứ tự giảm dần từ năm mới nhất về năm cũ nhất
+              chunks.push(this._yearsList.slice(i, i + 10)); 
           }
 
           return chunks.map((chunk, chunkIdx) => {
@@ -1226,7 +1228,9 @@
               let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK};"></div>`).join('');
               let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV};"></div>`).join('');
 
-              let titleSpan = chunk.length > 1 ? `${chunk[0]} - ${chunk[chunk.length-1]}` : `${chunk[0]}`;
+              let minYear = Math.min(...chunk);
+              let maxYear = Math.max(...chunk);
+              let titleSpan = chunk.length > 1 ? `${maxYear} - ${minYear}` : `${chunk[0]}`;
 
               // TẠO HTML THANH TỔNG HỢP (SUMMARY UI)
               let summaryHtml = `
@@ -1258,8 +1262,8 @@
 
                   <div class="chart-container">
                     <svg class="svg-overlay" preserveAspectRatio="none" viewBox="0 0 100 100">
-                      <polyline points="${polylinePointsKwh}" fill="none" stroke="${c_lineK}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
-                      <polyline points="${polylinePointsVnd}" fill="none" stroke="${c_lineV}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                      <polyline points="${polylinePointsKwh}" fill="none" stroke="${c_lineK}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+                      <polyline points="${polylinePointsVnd}" fill="none" stroke="${c_lineV}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                     <div class="dots-overlay">${dotsKwhHtml}${dotsVndHtml}</div>
                     <div class="bar-chart">
