@@ -3,7 +3,10 @@
   "name": "Electricity Consumption Tracker",
   "version": "2026.04.05",
   "documentation": "https://github.com/khaisilk1910/electricity_consumption_tracker",
-  "dependencies": [],
+  "dependencies": [
+    "lovelace",
+    "frontend"
+  ],
   "codeowners": [
     "@khaisilk1910"
   ],
