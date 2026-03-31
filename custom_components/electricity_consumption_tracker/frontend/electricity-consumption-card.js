@@ -46,7 +46,6 @@
       const currentTitle = conf.title || "";
       const currentIcon = conf.icon || "";
 
-      // Đã đổi màu mặc định của Line để khác biệt hoàn toàn với Cột xanh
       const chartColorFields = [
         { id: 'barKwh1', label: 'Cột kWh (Đỉnh)', default: '#3b82f6' },
         { id: 'barKwh2', label: 'Cột kWh (Đáy)', default: '#1e3a8a' },
@@ -503,7 +502,6 @@
       this._currentEntityId = null;
       this._lastHtml = ""; 
       
-      // Biến phục vụ tối ưu hóa Load
       this._initialized = false;
       this._loadStartTime = null;
     }
@@ -518,12 +516,10 @@
       }
     }
 
-    // TỐI ƯU HÓA LUỒNG SET HASS - CHỐNG GIẬT LAG KHI LOAD
     set hass(hass) {
       const oldHass = this._hass;
       this._hass = hass;
       
-      // Lần đầu tiên chạy
       if (!this._initialized) {
         this.scanForInstances();
         this.processData();
@@ -532,17 +528,15 @@
         return;
       }
 
-      // Nếu chưa tìm thấy entity nào (HA khởi động chậm), thỉnh lưu quét lại
       if (!this._currentEntityId || this._availableInstances.length === 0) {
         this.scanForInstances();
         if (this._availableInstances.length > 0) {
           this.processData();
         }
-        this.updateView(); // Vẫn gọi để xử lý hiệu ứng loading timeout
+        this.updateView();
         return;
       }
 
-      // CHỈ xử lý lại dữ liệu khi chính thẻ cấu hình của chúng ta thay đổi state
       if (oldHass && oldHass.states[this._currentEntityId] !== hass.states[this._currentEntityId]) {
         this.processData();
         this.updateView();
@@ -645,13 +639,11 @@
         this.card.addEventListener('touchend', () => { this.startResetTimer(); });
 
         this.card.addEventListener('click', (e) => {
-          // Các nút cho tab Tổng quan
           if (e.target.closest('.btn-y-prev')) this.changeYear(-1);
           if (e.target.closest('.btn-y-next')) this.changeYear(1);
           if (e.target.closest('.btn-m-prev')) this.changeMonth(-1);
           if (e.target.closest('.btn-m-next')) this.changeMonth(1);
 
-          // Các nút điều hướng cho tab Tra Cứu (chỉ đổi lựa chọn select, không auto search)
           if (e.target.closest('.btn-fy-prev')) this.changeFormYear(-1);
           if (e.target.closest('.btn-fy-next')) this.changeFormYear(1);
           if (e.target.closest('.btn-fm-prev')) this.changeFormMonth(-1);
@@ -742,11 +734,9 @@
     updateView() {
       if (!this._hass || !this.card) return;
 
-      // THÊM LOGIC KIỂM TRA ĐANG LOAD HOẶC LỖI
       if (this._availableInstances.length === 0) {
         if (!this._loadStartTime) this._loadStartTime = Date.now();
         
-        // Đợi 8 giây, nếu vẫn ko có thì báo đỏ (người dùng chưa setup hoặc gỡ tracker)
         if (Date.now() - this._loadStartTime > 20000) {
             this.card.innerHTML = `
                 <div style="padding: 24px 16px; text-align: center; border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px dashed rgba(220, 38, 38, 0.3);">
@@ -755,7 +745,6 @@
                     <div style="color: #ef4444; font-size: 12px; margin-top: 4px;">Vui lòng kiểm tra lại cấu hình sensor trong HA.</div>
                 </div>`;
         } else {
-            // Hiệu ứng Loading đẹp mắt trong lúc chờ HA khởi động data
             this.card.innerHTML = `
                 <style>
                     .ha-card-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 16px; min-height: 150px; }
@@ -772,12 +761,11 @@
                     </div>
                 </div>
             `;
-            // Kích hoạt kiểm tra lại sau 1s để mốc thời gian 8s được đánh giá lại
             setTimeout(() => { if (this._availableInstances.length === 0) this.updateView(); }, 1000);
         }
         return;
       } else {
-        this._loadStartTime = null; // Đã load xong, xóa cờ thời gian
+        this._loadStartTime = null; 
       }
 
       if (!this._currentEntityId) return;
@@ -794,9 +782,6 @@
       const displayTitle = conf.title || "Thống kê Điện năng";
       const configIcon = conf.icon || "mdi:transmission-tower";
       
-      // ==========================================
-      // THUẬT TOÁN NỀN & AUTO CONTRAST 
-      // ==========================================
       const applyOpacityToGradientStr = (str, opacity) => {
           return str.replace(/#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\b/gi, (match) => hexToRgba(match, opacity));
       };
@@ -858,8 +843,8 @@
       let c_barK2 = conf.barKwh2 || '#1e3a8a';
       let c_barV1 = conf.barVnd1 || '#10b981';
       let c_barV2 = conf.barVnd2 || '#047857';
-      let c_lineK = conf.lineKwh || '#ff3366'; // Hồng/Đỏ mặc định để dễ nhìn
-      let c_lineV = conf.lineVnd || '#ffcc00'; // Vàng tươi mặc định
+      let c_lineK = conf.lineKwh || '#ff3366'; 
+      let c_lineV = conf.lineVnd || '#ffcc00'; 
       let c_lineM = conf.lineMonth || '#ff3366';
 
       if (conf.auto_contrast) {
@@ -936,14 +921,13 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#E65100'; }
                   else { c_red = '#E64A19'; }
                   
-                  // Bảng màu chéo cực đậm cho Light Theme (Line nổi rực rỡ so với cột)
                   const palettesLight = {
-                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'}, // Blue bar -> Strong Red line
-                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'}, // Green bar -> Strong Purple line
-                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'}, // Cyan bar -> Strong Rose line
-                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'}, // Purple bar -> Strong Orange line
-                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'}, // Orange bar -> Strong Blue line
-                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'}  // Pink bar -> Strong Emerald line
+                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'}, 
+                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'}, 
+                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'}, 
+                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'}, 
+                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'}, 
+                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'}  
                   };
                   c_barK1 = palettesLight[chartPalette.kwh][1]; c_barK2 = palettesLight[chartPalette.kwh][2]; c_lineK = palettesLight[chartPalette.kwh].l;
                   c_barV1 = palettesLight[chartPalette.vnd][1]; c_barV2 = palettesLight[chartPalette.vnd][2]; c_lineV = palettesLight[chartPalette.vnd].l;
@@ -960,14 +944,13 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#C6FF00'; }
                   else { c_red = '#FFD54F'; }
 
-                  // Bảng màu Neon chéo cực sáng cho Dark Theme (Line phát sáng so với cột)
                   const palettesDark = {
-                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'}, // Blue bar -> Neon Yellow line
-                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'}, // Green bar -> Neon Pink line
-                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'}, // Cyan bar -> Neon Orange line
-                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'}, // Purple bar -> Neon Green line
-                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'}, // Orange bar -> Neon Cyan line
-                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'}  // Pink bar -> Neon Yellow line
+                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'}, 
+                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'}, 
+                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'}, 
+                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'}, 
+                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'}, 
+                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'}  
                   };
                   c_barK1 = palettesDark[chartPalette.kwh][1]; c_barK2 = palettesDark[chartPalette.kwh][2]; c_lineK = palettesDark[chartPalette.kwh].l;
                   c_barV1 = palettesDark[chartPalette.vnd][1]; c_barV2 = palettesDark[chartPalette.vnd][2]; c_lineV = palettesDark[chartPalette.vnd].l;
@@ -1400,7 +1383,6 @@
           .nav-btn:hover { background: rgba(59, 130, 246, 0.1); color: var(--text-main); }
           .nav-btn ha-icon { font-size: clamp(18px, 5vw, 20px); }
 
-          /* TÌM KIẾM - FLUID FLEXBOX ĐÁP ỨNG MỌI MÀN HÌNH */
           .search-bar-wrapper {
             display: flex;
             flex-wrap: wrap;
@@ -1409,7 +1391,7 @@
           }
           .search-inputs {
             display: flex;
-            flex: 99 1 250px; /* BÍ QUYẾT: Chiếm hết 99% không gian thừa để đẩy nút Tra Cứu gọn lại trên Desktop */
+            flex: 99 1 250px; 
             gap: clamp(6px, 2vw, 10px);
           }
           .search-inputs .control-pill {
@@ -1418,7 +1400,7 @@
             margin-bottom: 0;
           }
           .search-bar-wrapper .btn-search {
-            flex: 1 1 120px; /* BÍ QUYẾT: Trên desktop chỉ lấy 1 phần rất nhỏ ko gian dư. Bị rớt dòng trên Mobile tự căng 100% */
+            flex: 1 1 120px; 
             border-radius: 50px;
             padding: 8px 24px;
             display: flex;
@@ -1466,13 +1448,15 @@
           .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; cursor: pointer; z-index: 2; transition: z-index 0.3s; }
           .bar-col:hover, .bar-col:focus-within { z-index: 50; }
           
-          .bar { width: 75%; margin: 0 auto; background: linear-gradient(180deg, var(--bar-k1) 0%, var(--bar-k2) 100%); border-radius: 3px 3px 0 0; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); position: relative; min-height: 2px; }
+          /* FIXED: Loại bỏ min-height dư thừa để đỉnh cột chính xác đến 100% trục Y */
+          .bar { width: 75%; margin: 0 auto; background: linear-gradient(180deg, var(--bar-k1) 0%, var(--bar-k2) 100%); border-radius: 3px 3px 0 0; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
           .bar:hover { filter: brightness(1.2); transform: scaleY(1.02); transform-origin: bottom; }
           
           .bar-group { display: flex; align-items: flex-end; justify-content: center; gap: 0; width: 85%; height: 100%; margin: 0 auto; cursor: pointer; z-index: 10;}
           .bar-group > div { position: relative; transition: z-index 0.3s; z-index: 10; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;}
           
-          .bar-kwh, .bar-vnd { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); min-height: 2px; width: 100%; }
+          /* FIXED: Loại bỏ min-height tương tự cho bar-kwh, bar-vnd */
+          .bar-kwh, .bar-vnd { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); width: 100%; }
           .bar-kwh:hover, .bar-vnd:hover { filter: brightness(1.2); }
           .bar-kwh { background: linear-gradient(180deg, var(--bar-k1) 0%, var(--bar-k2) 100%); border-radius: 3px 0 0 0; }
           .bar-vnd { background: linear-gradient(180deg, var(--bar-v1) 0%, var(--bar-v2) 100%); border-radius: 0 3px 0 0; }
@@ -1490,8 +1474,10 @@
           @keyframes pulseColor { 0% { color: #f59e0b; text-shadow: 0 0 0px rgba(245,158,11,0); transform: translateX(-50%) scale(1); } 50% { color: var(--text-red); text-shadow: 0 0 6px rgba(220,38,38,0.3); transform: translateX(-50%) scale(1.15); } 100% { color: #f59e0b; text-shadow: 0 0 0px rgba(245,158,11,0); transform: translateX(-50%) scale(1); } }
           .label-active { font-weight: 900 !important; animation: pulseColor 1.5s infinite ease-in-out; opacity: 1 !important;}
           
-          .svg-overlay { position: absolute; top: -2px; left: -2px; width: calc(100% + 4px); height: calc(100% + 4px); pointer-events: none; z-index: 5; overflow: hidden; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
+          /* FIXED: Đồng nhất hệ trục 100% - Khắc phục điểm Line và Dot bị so le trục X */
+          .svg-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; overflow: visible; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.1)); }
           .svg-overlay polyline { filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.4)); }
+          
           .dots-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 6;}
           .chart-dot { position: absolute; width: 3px; height: 3px; background: var(--block-bg); border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
         </style>
