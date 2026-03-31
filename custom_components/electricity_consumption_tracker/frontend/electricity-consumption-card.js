@@ -1228,8 +1228,8 @@
                 pointsVnd.push({x, y: y_coord}); return `${x},${y_coord}`;
               }).join(' ');
 
-              let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK};"></div>`).join('');
-              let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV};"></div>`).join('');
+              let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK}; background: ${c_lineK};"></div>`).join('');
+              let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV}; background: ${c_lineV};"></div>`).join('');
 
               let minYear = Math.min(...chunk);
               let maxYear = Math.max(...chunk);
