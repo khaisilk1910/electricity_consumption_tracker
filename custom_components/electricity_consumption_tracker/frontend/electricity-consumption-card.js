@@ -532,7 +532,7 @@
         return;
       }
 
-      // Nếu chưa tìm thấy entity nào (HA khởi động chậm), thỉnh thoảng quét lại
+      // Nếu chưa tìm thấy entity nào (HA khởi động chậm), thỉnh trực lại
       if (!this._currentEntityId || this._availableInstances.length === 0) {
         this.scanForInstances();
         if (this._availableInstances.length > 0) {
@@ -709,13 +709,19 @@
           }
 
           if (e.target.closest('#btn-do-search')) {
-              this._formYear = parseInt(this.shadowRoot.getElementById('form-year').value);
-              const mVal = this.shadowRoot.getElementById('form-month').value;
-              this._formMonth = mVal;
-              this._searchYear = this._formYear;
-              this._searchMonth = mVal !== "" ? parseInt(mVal) : null;
-              this._hasSearched = true;
-              this.updateView();
+              // SỬA LỖI Ở ĐÂY: Dùng this.card.querySelector thay cho this.shadowRoot.getElementById để đảm bảo an toàn không crash
+              const formYearEl = this.card.querySelector('#form-year');
+              const formMonthEl = this.card.querySelector('#form-month');
+              
+              if (formYearEl && formMonthEl) {
+                  this._formYear = parseInt(formYearEl.value);
+                  const mVal = formMonthEl.value;
+                  this._formMonth = mVal;
+                  this._searchYear = this._formYear;
+                  this._searchMonth = mVal !== "" ? parseInt(mVal) : null;
+                  this._hasSearched = true;
+                  this.updateView();
+              }
           }
         });
 
@@ -1227,7 +1233,6 @@
           }
 
           return chunks.map((chunk, chunkIdx) => {
-              // TÍNH TỔNG CỦA CẢ CHU KỲ
               let totalKwh = 0;
               let totalTruocVat = 0;
               let totalSauVat = 0;
@@ -1241,7 +1246,6 @@
                       truocVat = yState.attributes.tong_tien_truoc_thue || 0;
                   }
                   
-                  // Cộng dồn vào biến tổng
                   totalKwh += kwh;
                   totalTruocVat += truocVat;
                   totalSauVat += vnd;
@@ -1268,7 +1272,6 @@
                 pointsVnd.push({x, y: y_coord}); return `${x},${y_coord}`;
               }).join(' ');
 
-              // ĐÃ FIX LỖI THIẾU NỀN THEO YÊU CẦU TRƯỚC
               let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK}; background: ${c_lineK};"></div>`).join('');
               let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV}; background: ${c_lineV};"></div>`).join('');
 
@@ -1276,7 +1279,6 @@
               let maxYear = Math.max(...chunk);
               let titleSpan = chunk.length > 1 ? `${maxYear} - ${minYear}` : `${chunk[0]}`;
 
-              // TẠO HTML THANH TỔNG HỢP (SUMMARY UI)
               let summaryHtml = `
                 <div class="decade-summary">
                   <div class="d-sum-item hover-zap" style="cursor: default;">
@@ -1377,7 +1379,6 @@
           }
           select.main-sel:hover { background: rgba(0,0,0,0.6); }
 
-          /* SEARCH UI */
           .s-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: clamp(4px, 1.5vw, 8px); align-items: center;}
           select.s-input { width: 100%; padding: clamp(6px, 1.5vw, 8px) clamp(4px, 1vw, 8px); border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: var(--block-bg); color: var(--text-main); font-weight: 600; font-size: clamp(11px, 3vw, 13px); outline: none; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none;}
           .btn-search { background: #3b82f6; color: white; border: none; padding: clamp(6px, 1.5vw, 8px) clamp(8px, 2vw, 16px); border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.2s; font-size: clamp(11px, 3vw, 13px); white-space: nowrap;}
@@ -1390,7 +1391,6 @@
           .s-val .primary { color: #3b82f6; font-size: clamp(15px, 3.5vw, 24px); }
           .s-val .money { color: var(--text-red); font-size: clamp(15px, 3.5vw, 24px); }
 
-          /* STAT BOX OVERVIEW */
           .global-stats-compact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; text-align: center; width: 100%; box-sizing: border-box; }
           .stat-box { display: flex; flex-direction: column; justify-content: center; cursor: default; transition: background 0.3s; border-radius: 8px; padding: clamp(2px, 1vw, 4px) 2px; min-width: 0; overflow: hidden; }
           .stat-box.primary { border-right: 1px solid rgba(0,0,0,0.05); }
