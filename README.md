@@ -2,7 +2,8 @@
 
 Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản lý, lưu trữ và tính toán tiền điện lũy tiến Việt Nam cho nhiều thiết bị hoặc công tơ điện độc lập cùng lúc.
 
-<img width="1809" height="800" alt="image" src="https://github.com/user-attachments/assets/f9522348-8196-4f34-93dc-05e1b368f707" />
+<img width="1039" height="912" alt="image" src="https://github.com/user-attachments/assets/ad51412f-e112-48f6-b601-23e0c763912d" />
+
 
 [Card này vào đây](https://github.com/khaisilk1910/electricity_consumption_tracker/tree/main/Lovelace%20UI/Bi%E1%BB%83u%20%C4%90%E1%BB%93%20Master)
 
