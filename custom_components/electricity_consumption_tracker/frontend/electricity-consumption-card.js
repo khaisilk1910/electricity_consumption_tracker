@@ -46,6 +46,7 @@
       const currentTitle = conf.title || "";
       const currentIcon = conf.icon || "";
 
+      // Đã đổi màu mặc định của Line để khác biệt hoàn toàn với Cột xanh
       const chartColorFields = [
         { id: 'barKwh1', label: 'Cột kWh (Đỉnh)', default: '#3b82f6' },
         { id: 'barKwh2', label: 'Cột kWh (Đáy)', default: '#1e3a8a' },
@@ -502,6 +503,7 @@
       this._currentEntityId = null;
       this._lastHtml = ""; 
       
+      // Biến phục vụ tối ưu hóa Load
       this._initialized = false;
       this._loadStartTime = null;
     }
@@ -516,10 +518,12 @@
       }
     }
 
+    // TỐI ƯU HÓA LUỒNG SET HASS - CHỐNG GIẬT LAG KHI LOAD
     set hass(hass) {
       const oldHass = this._hass;
       this._hass = hass;
       
+      // Lần đầu tiên chạy
       if (!this._initialized) {
         this.scanForInstances();
         this.processData();
@@ -528,15 +532,17 @@
         return;
       }
 
+      // Nếu chưa tìm thấy entity nào (HA khởi động chậm), thỉnh thoảng quét lại
       if (!this._currentEntityId || this._availableInstances.length === 0) {
         this.scanForInstances();
         if (this._availableInstances.length > 0) {
           this.processData();
         }
-        this.updateView();
+        this.updateView(); // Vẫn gọi để xử lý hiệu ứng loading timeout
         return;
       }
 
+      // CHỈ xử lý lại dữ liệu khi chính thẻ cấu hình của chúng ta thay đổi state
       if (oldHass && oldHass.states[this._currentEntityId] !== hass.states[this._currentEntityId]) {
         this.processData();
         this.updateView();
@@ -606,7 +612,7 @@
           this._yearsList = []; this._monthsList = []; return;
       }
 
-      this._yearsList = Object.keys(totalState.attributes.chi_tiet_tung_nam).map(y => parseInt(y.replace('Nam_', ''), 10)).sort((a, b) => b - a); 
+      this._yearsList = Object.keys(totalState.attributes.chi_tiet_tung_nam).map(y => parseInt(y.replace('Nam_', ''))).sort((a, b) => b - a); 
       
       if (this._selectedYear === null && this._yearsList.length > 0) this._selectedYear = this._yearsList[0];
       if (this._formYear === null && this._yearsList.length > 0) this._formYear = this._yearsList[0];
@@ -615,71 +621,12 @@
         const yearState = this._hass.states[`${this.baseSlug}_nam_${this._selectedYear}`];
         this._monthsList = [];
         if (yearState && yearState.attributes.chi_tiet_cac_thang) {
-          this._monthsList = Object.keys(yearState.attributes.chi_tiet_cac_thang).map(m => parseInt(m.replace('Thang_', ''), 10)).sort((a, b) => b - a);
+          this._monthsList = Object.keys(yearState.attributes.chi_tiet_cac_thang).map(m => parseInt(m.replace('Thang_', ''))).sort((a, b) => b - a);
         } else {
-          this._monthsList = Object.keys(this._hass.states).filter(eid => eid.startsWith(`${this.baseSlug}_thang_`) && eid.endsWith(`_${this._selectedYear}`)).map(eid => parseInt(eid.split('_thang_')[1].split('_')[0], 10)).sort((a, b) => b - a);
+          this._monthsList = Object.keys(this._hass.states).filter(eid => eid.startsWith(`${this.baseSlug}_thang_`) && eid.endsWith(`_${this._selectedYear}`)).map(eid => parseInt(eid.split('_thang_')[1].split('_')[0])).sort((a, b) => b - a);
         }
         if (this._selectedMonth === null && this._monthsList.length > 0) this._selectedMonth = this._monthsList[0];
       }
-    }
-
-    changeYear(step) {
-      if (!this._yearsList || this._yearsList.length === 0) return;
-      const idx = this._yearsList.indexOf(this._selectedYear);
-      if (idx !== -1) {
-        let newIdx = idx - step;
-        if (newIdx >= 0 && newIdx < this._yearsList.length) {
-            this._selectedYear = this._yearsList[newIdx]; 
-            this._selectedMonth = null; 
-            this.processData(); 
-            this.updateView();
-        }
-      }
-    }
-
-    changeMonth(step) {
-      if (!this._monthsList || this._monthsList.length === 0) return;
-      const idx = this._monthsList.indexOf(this._selectedMonth);
-      if (idx !== -1) {
-        let newIdx = idx - step;
-        if (newIdx >= 0 && newIdx < this._monthsList.length) {
-            this._selectedMonth = this._monthsList[newIdx]; 
-            this.updateView();
-        }
-      }
-    }
-
-    changeFormYear(step) {
-      if (!this._yearsList || this._yearsList.length === 0) return;
-      const currentYear = parseInt(this._formYear, 10);
-      const idx = this._yearsList.indexOf(currentYear);
-      
-      if (idx !== -1) {
-        let newIdx = idx - step;
-        if (newIdx >= 0 && newIdx < this._yearsList.length) {
-            this._formYear = this._yearsList[newIdx];
-            if (this._hasSearched) {
-                this._searchYear = this._formYear;
-            }
-            this.updateView();
-        }
-      }
-    }
-
-    changeFormMonth(step) {
-      let currentVal = (this._formMonth === '' || this._formMonth == null) ? 0 : parseInt(this._formMonth, 10);
-      if (isNaN(currentVal)) currentVal = 0;
-      
-      let newVal = currentVal + step;
-      if (newVal < 0) newVal = 0;
-      if (newVal > 12) newVal = 12;
-      
-      this._formMonth = newVal === 0 ? '' : newVal;
-      
-      if (this._hasSearched) {
-          this._searchMonth = this._formMonth !== '' ? parseInt(this._formMonth, 10) : null;
-      }
-      this.updateView();
     }
 
     render() {
@@ -698,17 +645,17 @@
         this.card.addEventListener('touchend', () => { this.startResetTimer(); });
 
         this.card.addEventListener('click', (e) => {
-          if (!e.target || typeof e.target.closest !== 'function') return;
-
+          // Nút bấm cho tab Tổng quan
           if (e.target.closest('.btn-y-prev')) this.changeYear(-1);
           if (e.target.closest('.btn-y-next')) this.changeYear(1);
           if (e.target.closest('.btn-m-prev')) this.changeMonth(-1);
           if (e.target.closest('.btn-m-next')) this.changeMonth(1);
           
-          if (e.target.closest('.btn-sy-prev')) this.changeFormYear(-1);
-          if (e.target.closest('.btn-sy-next')) this.changeFormYear(1);
-          if (e.target.closest('.btn-sm-prev')) this.changeFormMonth(-1);
-          if (e.target.closest('.btn-sm-next')) this.changeFormMonth(1);
+          // Nút bấm cho tab Tra cứu
+          if (e.target.closest('.btn-sy-prev')) this.changeSearchYear(-1);
+          if (e.target.closest('.btn-sy-next')) this.changeSearchYear(1);
+          if (e.target.closest('.btn-sm-prev')) this.changeSearchMonth(-1);
+          if (e.target.closest('.btn-sm-next')) this.changeSearchMonth(1);
 
           if (e.target.closest('.tab-item')) {
               const clickedTab = e.target.closest('.tab-item').dataset.tab;
@@ -719,56 +666,107 @@
           }
 
           if (e.target.closest('#btn-do-search')) {
-              const formYearEl = this.card.querySelector('#form-year');
-              const formMonthEl = this.card.querySelector('#form-month');
-
-              if (formYearEl && formMonthEl) {
-                  this._formYear = parseInt(formYearEl.value, 10);
-                  const mVal = formMonthEl.value;
-                  this._formMonth = mVal;
-                  this._searchYear = this._formYear;
-                  this._searchMonth = mVal !== "" ? parseInt(mVal, 10) : null;
-                  this._hasSearched = true;
-                  this.updateView();
-              }
+              this._formYear = parseInt(this.shadowRoot.getElementById('sel-search-year').value);
+              const mVal = this.shadowRoot.getElementById('sel-search-month').value;
+              this._formMonth = mVal;
+              this._searchYear = this._formYear;
+              this._searchMonth = mVal !== "" ? parseInt(mVal) : null;
+              this._hasSearched = true;
+              this.updateView();
           }
         });
 
         this.card.addEventListener('change', (e) => {
-          if (!e.target) return;
-          
           if (e.target.id === 'sel-instance') {
             this._currentEntityId = e.target.value; this._selectedYear = null; this._selectedMonth = null;
             this._hasSearched = false;
             this.processData(); this.updateView();
           }
           if (e.target.id === 'sel-year') { 
-            this._selectedYear = parseInt(e.target.value, 10); this._selectedMonth = null; 
+            this._selectedYear = parseInt(e.target.value); this._selectedMonth = null; 
             this.processData(); this.updateView(); 
           }
           if (e.target.id === 'sel-month') { 
-            this._selectedMonth = parseInt(e.target.value, 10); this.updateView(); 
+            this._selectedMonth = parseInt(e.target.value); this.updateView(); 
           }
-          if (e.target.id === 'form-year') {
-              this._formYear = parseInt(e.target.value, 10);
-              if (this._hasSearched) this._searchYear = this._formYear;
-              this.updateView();
+          // Lắng nghe thay đổi dropdown của Tab Tra Cứu
+          if (e.target.id === 'sel-search-year') {
+              this._formYear = parseInt(e.target.value);
+              this.triggerAutoSearch();
           }
-          if (e.target.id === 'form-month') {
+          if (e.target.id === 'sel-search-month') {
               this._formMonth = e.target.value;
-              if (this._hasSearched) this._searchMonth = this._formMonth !== "" ? parseInt(this._formMonth, 10) : null;
-              this.updateView();
+              this.triggerAutoSearch();
           }
         });
       }
     }
 
+    // ==========================================
+    // LOGIC CHUYỂN ĐỔI - TỔNG QUAN
+    // ==========================================
+    changeYear(step) {
+      const idx = this._yearsList.indexOf(this._selectedYear);
+      if (idx !== -1 && this._yearsList[idx - step]) {
+        this._selectedYear = this._yearsList[idx - step]; this._selectedMonth = null; 
+        this.processData(); this.updateView();
+      }
+    }
+
+    changeMonth(step) {
+      const idx = this._monthsList.indexOf(this._selectedMonth);
+      if (idx !== -1 && this._monthsList[idx - step]) {
+        this._selectedMonth = this._monthsList[idx - step]; this.updateView();
+      }
+    }
+
+    // ==========================================
+    // LOGIC CHUYỂN ĐỔI - TRA CỨU
+    // ==========================================
+    triggerAutoSearch() {
+        // Nếu đã từng tra cứu, tự động render biểu đồ mới
+        if (this._hasSearched) {
+            this._searchYear = this._formYear;
+            this._searchMonth = this._formMonth !== "" ? parseInt(this._formMonth) : null;
+        }
+        this.updateView();
+    }
+
+    changeSearchYear(step) {
+      const idx = this._yearsList.indexOf(this._formYear);
+      // step 1 là tiến (qua năm mới hơn -> index nhỏ hơn), -1 là lùi (về năm cũ hơn -> index lớn hơn)
+      if (idx !== -1 && this._yearsList[idx - step]) {
+        this._formYear = this._yearsList[idx - step];
+        this.triggerAutoSearch();
+      }
+    }
+
+    changeSearchMonth(step) {
+      const states = ['', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+      let current = this._formMonth;
+      if (current !== '') current = parseInt(current);
+      
+      let idx = states.indexOf(current);
+      if (idx === -1) idx = 0;
+      
+      // Khác với năm, tháng index 1..12 theo chiều xuôi nên step 1 (Next) là tiến
+      let newIdx = idx + step;
+      if (newIdx >= states.length) newIdx = 0; // Vượt quá tháng 12 thì quay về Cả năm
+      if (newIdx < 0) newIdx = states.length - 1; // Từ Cả năm bấm lùi thì xuống tháng 12
+      
+      this._formMonth = states[newIdx];
+      this.triggerAutoSearch();
+    }
+
+
     updateView() {
       if (!this._hass || !this.card) return;
 
+      // THÊM LOGIC KIỂM TRA ĐANG LOAD HOẶC LỖI
       if (this._availableInstances.length === 0) {
         if (!this._loadStartTime) this._loadStartTime = Date.now();
         
+        // Đợi 8 giây, nếu vẫn ko có thì báo đỏ (người dùng chưa setup hoặc gỡ tracker)
         if (Date.now() - this._loadStartTime > 20000) {
             this.card.innerHTML = `
                 <div style="padding: 24px 16px; text-align: center; border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px dashed rgba(220, 38, 38, 0.3);">
@@ -777,6 +775,7 @@
                     <div style="color: #ef4444; font-size: 12px; margin-top: 4px;">Vui lòng kiểm tra lại cấu hình sensor trong HA.</div>
                 </div>`;
         } else {
+            // Hiệu ứng Loading đẹp mắt trong lúc chờ HA khởi động data
             this.card.innerHTML = `
                 <style>
                     .ha-card-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 16px; min-height: 150px; }
@@ -793,11 +792,12 @@
                     </div>
                 </div>
             `;
+            // Kích hoạt kiểm tra lại sau 1s để mốc thời gian 8s được đánh giá lại
             setTimeout(() => { if (this._availableInstances.length === 0) this.updateView(); }, 1000);
         }
         return;
       } else {
-        this._loadStartTime = null; 
+        this._loadStartTime = null; // Đã load xong, xóa cờ thời gian
       }
 
       if (!this._currentEntityId) return;
@@ -814,6 +814,9 @@
       const displayTitle = conf.title || "Thống kê Điện năng";
       const configIcon = conf.icon || "mdi:transmission-tower";
       
+      // ==========================================
+      // THUẬT TOÁN NỀN & AUTO CONTRAST 
+      // ==========================================
       const applyOpacityToGradientStr = (str, opacity) => {
           return str.replace(/#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\b/gi, (match) => hexToRgba(match, opacity));
       };
@@ -875,8 +878,8 @@
       let c_barK2 = conf.barKwh2 || '#1e3a8a';
       let c_barV1 = conf.barVnd1 || '#10b981';
       let c_barV2 = conf.barVnd2 || '#047857';
-      let c_lineK = conf.lineKwh || '#ff3366'; 
-      let c_lineV = conf.lineVnd || '#ffcc00'; 
+      let c_lineK = conf.lineKwh || '#ff3366'; // Hồng/Đỏ mặc định để dễ nhìn
+      let c_lineV = conf.lineVnd || '#ffcc00'; // Vàng tươi mặc định
       let c_lineM = conf.lineMonth || '#ff3366';
 
       if (conf.auto_contrast) {
@@ -953,13 +956,14 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#E65100'; }
                   else { c_red = '#E64A19'; }
                   
+                  // Bảng màu chéo cực đậm cho Light Theme (Line nổi rực rỡ so với cột)
                   const palettesLight = {
-                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'},
-                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'},
-                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'},
-                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'},
-                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'},
-                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'} 
+                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'}, // Blue bar -> Strong Red line
+                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'}, // Green bar -> Strong Purple line
+                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'}, // Cyan bar -> Strong Rose line
+                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'}, // Purple bar -> Strong Orange line
+                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'}, // Orange bar -> Strong Blue line
+                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'}  // Pink bar -> Strong Emerald line
                   };
                   c_barK1 = palettesLight[chartPalette.kwh][1]; c_barK2 = palettesLight[chartPalette.kwh][2]; c_lineK = palettesLight[chartPalette.kwh].l;
                   c_barV1 = palettesLight[chartPalette.vnd][1]; c_barV2 = palettesLight[chartPalette.vnd][2]; c_lineV = palettesLight[chartPalette.vnd].l;
@@ -976,13 +980,14 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#C6FF00'; }
                   else { c_red = '#FFD54F'; }
 
+                  // Bảng màu Neon chéo cực sáng cho Dark Theme (Line phát sáng so với cột)
                   const palettesDark = {
-                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'},
-                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'},
-                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'},
-                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'},
-                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'},
-                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'} 
+                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'}, // Blue bar -> Neon Yellow line
+                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'}, // Green bar -> Neon Pink line
+                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'}, // Cyan bar -> Neon Orange line
+                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'}, // Purple bar -> Neon Green line
+                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'}, // Orange bar -> Neon Cyan line
+                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'}  // Pink bar -> Neon Yellow line
                   };
                   c_barK1 = palettesDark[chartPalette.kwh][1]; c_barK2 = palettesDark[chartPalette.kwh][2]; c_lineK = palettesDark[chartPalette.kwh].l;
                   c_barV1 = palettesDark[chartPalette.vnd][1]; c_barV2 = palettesDark[chartPalette.vnd][2]; c_lineV = palettesDark[chartPalette.vnd].l;
@@ -996,6 +1001,10 @@
       const iconHtml = configIcon.includes(":") 
           ? `<ha-icon icon="${configIcon}"></ha-icon>` 
           : `<span class="emoji-icon">${configIcon}</span>`;
+
+      // ==========================================
+      // HELPER FUNCTIONS ĐỂ TẠO CÁC BIỂU ĐỒ & UI
+      // ==========================================
 
       const buildMonthChart = (y, m, isSearchMode = false) => {
         const mState = this._hass.states[`${this.baseSlug}_thang_${m}_${y}`];
@@ -1035,6 +1044,7 @@
         }).filter(p => p !== null).join(' ');
 
         let dotsHtmlDaily = pointsDaily.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineM}; background: ${c_lineM};"></div>`).join('');
+
 
         let searchStatsHtml = '';
         if (isSearchMode) {
@@ -1222,7 +1232,7 @@
       };
 
       const buildDecadeCharts = () => {
-          if (!this._yearsList || this._yearsList.length === 0) return '';
+          if (this._yearsList.length === 0) return '';
           
           let chunks = [];
           for (let i = 0; i < this._yearsList.length; i += 10) {
@@ -1269,8 +1279,8 @@
                 pointsVnd.push({x, y: y_coord}); return `${x},${y_coord}`;
               }).join(' ');
 
-              let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK}; background: ${c_lineK};"></div>`).join('');
-              let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV}; background: ${c_lineV};"></div>`).join('');
+              let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK};"></div>`).join('');
+              let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV};"></div>`).join('');
 
               let minYear = Math.min(...chunk);
               let maxYear = Math.max(...chunk);
@@ -1329,6 +1339,10 @@
           }).join('');
       };
 
+      // ==========================================
+      // LẮP RÁP UI CHÍNH
+      // ==========================================
+
       let html = `
         <style>
           :host {
@@ -1352,10 +1366,10 @@
           }
           .main-card-header ha-icon, .main-card-header .emoji-icon { font-size: clamp(28px, 7vw, 36px); line-height: 1; margin-bottom: -4px; color: #f59e0b; }
           
-          .top-dashboard, .chart-section, .control-pill, .search-form-box { 
+          .top-dashboard, .chart-section, .control-pill { 
             background: var(--block-bg); border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
           }
-          .top-dashboard, .search-form-box { padding: 12px; margin-bottom: 12px; }
+          .top-dashboard { padding: 12px; margin-bottom: 12px; }
           .chart-section { padding: 12px; margin-bottom: 12px; position: relative; }
           .control-pill { border-radius: 50px; display: flex; align-items: center; justify-content: space-between; padding: 2px; min-width: 0; }
           
@@ -1372,10 +1386,8 @@
           }
           select.main-sel:hover { background: rgba(0,0,0,0.6); }
 
-          .s-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: clamp(4px, 1.5vw, 8px); align-items: center;}
-          select.s-input { width: 100%; padding: clamp(6px, 1.5vw, 8px) clamp(4px, 1vw, 8px); border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: var(--block-bg); color: var(--text-main); font-weight: 600; font-size: clamp(11px, 3vw, 13px); outline: none; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none;}
-          .btn-search { background: #3b82f6; color: white; border: none; padding: clamp(6px, 1.5vw, 8px) clamp(8px, 2vw, 16px); border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.2s; font-size: clamp(11px, 3vw, 13px); white-space: nowrap;}
-          .btn-search:hover { background: #2563eb; }
+          .btn-search { background: #3b82f6; color: white; border: none; padding: clamp(8px, 2vw, 10px) 16px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: background 0.2s; font-size: clamp(12px, 3.5vw, 14px); white-space: nowrap; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);}
+          .btn-search:hover { background: #2563eb; transform: translateY(-1px); }
 
           .search-stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(8px, 1.5vw, 16px); margin-bottom: 16px; }
           .s-stat-card { background: var(--block-bg); border-radius: 8px; padding: clamp(10px, 2vw, 20px); box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: clamp(60px, 8vw, 80px);}
@@ -1384,6 +1396,7 @@
           .s-val .primary { color: #3b82f6; font-size: clamp(15px, 3.5vw, 24px); }
           .s-val .money { color: var(--text-red); font-size: clamp(15px, 3.5vw, 24px); }
 
+          /* STAT BOX OVERVIEW */
           .global-stats-compact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; text-align: center; width: 100%; box-sizing: border-box; }
           .stat-box { display: flex; flex-direction: column; justify-content: center; cursor: default; transition: background 0.3s; border-radius: 8px; padding: clamp(2px, 1vw, 4px) 2px; min-width: 0; overflow: hidden; }
           .stat-box.primary { border-right: 1px solid rgba(0,0,0,0.05); }
@@ -1483,6 +1496,9 @@
       `;
 
       if (this._activeTab === 'overview') {
+          // ==============================
+          // RENDER TAB: TỔNG QUAN
+          // ==============================
           const t_kwh = totalState.state;
           const t_truoc = totalState.attributes.tong_tien_tich_luy;
           const t_sau = totalState.attributes.tong_tien_tich_luy_sau_thue;
@@ -1511,7 +1527,7 @@
                 <div class="control-content">
                   <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
                   <select id="sel-year" class="styled-sel">
-                    ${this._yearsList.map(y => `<option value="${y}" ${parseInt(this._selectedYear, 10) === y ? 'selected' : ''}>${y}</option>`).join('')}
+                    ${this._yearsList.map(y => `<option value="${y}" ${this._selectedYear === y ? 'selected' : ''}>${y}</option>`).join('')}
                   </select>
                 </div>
                 <div class="nav-btn btn-y-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
@@ -1521,7 +1537,7 @@
                 <div class="control-content">
                   <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
                   <select id="sel-month" class="styled-sel">
-                    ${this._monthsList.map(m => `<option value="${m}" ${parseInt(this._selectedMonth, 10) === m ? 'selected' : ''}>${m}</option>`).join('')}
+                    ${this._monthsList.map(m => `<option value="${m}" ${this._selectedMonth === m ? 'selected' : ''}>${m}</option>`).join('')}
                   </select>
                 </div>
                 <div class="nav-btn btn-m-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
@@ -1533,35 +1549,42 @@
           html += buildYearChart(this._selectedYear, false);
 
       } else {
+          // ==============================
+          // RENDER TAB: TRA CỨU
+          // ==============================
+          
+          // Đã thay thế Search Input cũ thành Controls giống Tổng Quan
           html += `
-             <div class="search-form-box">
-                <div class="s-grid">
-                    <div class="control-pill" style="border: 1px solid rgba(0,0,0,0.1); background: rgba(0,0,0,0.03);">
-                        <div class="nav-btn btn-sy-prev" title="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
-                        <div class="control-content" style="border-color: rgba(0,0,0,0.1);">
-                            <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
-                            <select id="form-year" class="styled-sel">
-                                ${this._yearsList.map(y => `<option value="${y}" ${parseInt(this._formYear, 10) === y ? 'selected' : ''}>${y}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="nav-btn btn-sy-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
-                    </div>
-                    
-                    <div class="control-pill" style="border: 1px solid rgba(0,0,0,0.1); background: rgba(0,0,0,0.03);">
-                        <div class="nav-btn btn-sm-prev" title="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
-                        <div class="control-content" style="border-color: rgba(0,0,0,0.1);">
-                            <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
-                            <select id="form-month" class="styled-sel">
-                                <option value="" ${this._formMonth === '' || this._formMonth == null ? 'selected' : ''}>-- Cả năm --</option>
-                                ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${parseInt(this._formMonth, 10) === m ? 'selected' : ''}>${m}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="nav-btn btn-sm-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
-                    </div>
-
-                    <button id="btn-do-search" class="btn-search"><ha-icon icon="mdi:magnify" style="font-size:16px; margin-right:4px; margin-bottom:-2px;"></ha-icon>Tra cứu</button>
+             <div class="controls" style="margin-bottom: 12px;">
+              <div class="control-pill">
+                <div class="nav-btn btn-sy-prev" title="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+                <div class="control-content">
+                  <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
+                  <select id="sel-search-year" class="styled-sel">
+                    ${this._yearsList.map(y => `<option value="${y}" ${this._formYear === y ? 'selected' : ''}>${y}</option>`).join('')}
+                  </select>
                 </div>
-             </div>
+                <div class="nav-btn btn-sy-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+              </div>
+              
+              <div class="control-pill">
+                <div class="nav-btn btn-sm-prev" title="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+                <div class="control-content">
+                  <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
+                  <select id="sel-search-month" class="styled-sel">
+                    <option value="" ${this._formMonth === '' ? 'selected' : ''}>-- Cả năm --</option>
+                    ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${this._formMonth == m ? 'selected' : ''}>${m}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="nav-btn btn-sm-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-bottom: 16px;">
+                <button id="btn-do-search" class="btn-search" style="width: 100%;">
+                    <ha-icon icon="mdi:magnify" style="font-size:18px; margin-right:4px; margin-bottom:-2px;"></ha-icon> Bắt đầu Tra cứu
+                </button>
+            </div>
           `;
 
           if (this._hasSearched && this._searchYear) {
