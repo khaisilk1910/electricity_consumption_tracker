@@ -5,8 +5,6 @@ Tích hợp tùy chỉnh (Custom Integration) cho Home Assistant giúp quản l�
 <img width="1039" height="912" alt="image" src="https://github.com/user-attachments/assets/ad51412f-e112-48f6-b601-23e0c763912d" />
 
 
-[Card này vào đây](https://github.com/khaisilk1910/electricity_consumption_tracker/tree/main/Lovelace%20UI/Bi%E1%BB%83u%20%C4%90%E1%BB%93%20Master)
-
 
 ## Cài đặt
 
