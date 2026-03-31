@@ -666,13 +666,17 @@
           }
 
           if (e.target.closest('#btn-do-search')) {
-              this._formYear = parseInt(this.shadowRoot.getElementById('sel-search-year').value);
-              const mVal = this.shadowRoot.getElementById('sel-search-month').value;
-              this._formMonth = mVal;
-              this._searchYear = this._formYear;
-              this._searchMonth = mVal !== "" ? parseInt(mVal) : null;
-              this._hasSearched = true;
-              this.updateView();
+              const selYear = this.card.querySelector('#sel-search-year');
+              const selMonth = this.card.querySelector('#sel-search-month');
+              if (selYear && selMonth) {
+                  this._formYear = parseInt(selYear.value);
+                  const mVal = selMonth.value;
+                  this._formMonth = mVal;
+                  this._searchYear = this._formYear;
+                  this._searchMonth = mVal !== "" ? parseInt(mVal) : null;
+                  this._hasSearched = true;
+                  this.updateView();
+              }
           }
         });
 
@@ -706,6 +710,7 @@
     // LOGIC CHUYỂN ĐỔI - TỔNG QUAN
     // ==========================================
     changeYear(step) {
+      if (!this._yearsList || this._yearsList.length === 0) return;
       const idx = this._yearsList.indexOf(this._selectedYear);
       if (idx !== -1 && this._yearsList[idx - step]) {
         this._selectedYear = this._yearsList[idx - step]; this._selectedMonth = null; 
@@ -714,6 +719,7 @@
     }
 
     changeMonth(step) {
+      if (!this._monthsList || this._monthsList.length === 0) return;
       const idx = this._monthsList.indexOf(this._selectedMonth);
       if (idx !== -1 && this._monthsList[idx - step]) {
         this._selectedMonth = this._monthsList[idx - step]; this.updateView();
@@ -733,6 +739,7 @@
     }
 
     changeSearchYear(step) {
+      if (!this._yearsList || this._yearsList.length === 0) return;
       const idx = this._yearsList.indexOf(this._formYear);
       // step 1 là tiến (qua năm mới hơn -> index nhỏ hơn), -1 là lùi (về năm cũ hơn -> index lớn hơn)
       if (idx !== -1 && this._yearsList[idx - step]) {
@@ -1553,7 +1560,6 @@
           // RENDER TAB: TRA CỨU
           // ==============================
           
-          // Đã thay thế Search Input cũ thành Controls giống Tổng Quan
           html += `
              <div class="controls" style="margin-bottom: 12px;">
               <div class="control-pill">
