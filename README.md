@@ -39,6 +39,11 @@ Vào Developer tools >> Actions( hoặc tạo Automation):
 1. Tìm  `electricity_consumption_tracker.override_data`
 2. Điền các thông tin như mẫu như ảnh trên và chạy
 
+
+## ✨ Thêm thẻ ra giao diện Dashboard
+Vào Edit dashboard >> Thêm thẻ >> Tìm `thống kê điện năng` và thêm ra màn hình
+<img width="1646" height="1031" alt="image" src="https://github.com/user-attachments/assets/142363ec-85a7-46fb-a587-a8ba2e64a2d6" />
+
   
 ## ✨ Tính năng nổi bật
 
