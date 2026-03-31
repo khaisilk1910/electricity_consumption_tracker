@@ -629,6 +629,49 @@
       }
     }
 
+    // Logic thay đổi năm ở tab Tổng quan
+    changeYear(step) {
+      const idx = this._yearsList.indexOf(this._selectedYear);
+      if (idx !== -1 && this._yearsList[idx - step]) {
+        this._selectedYear = this._yearsList[idx - step]; this._selectedMonth = null; 
+        this.processData(); this.updateView();
+      }
+    }
+
+    // Logic thay đổi tháng ở tab Tổng quan
+    changeMonth(step) {
+      const idx = this._monthsList.indexOf(this._selectedMonth);
+      if (idx !== -1 && this._monthsList[idx - step]) {
+        this._selectedMonth = this._monthsList[idx - step]; this.updateView();
+      }
+    }
+
+    // Logic thay đổi năm ở tab Tra cứu
+    changeFormYear(step) {
+      const idx = this._yearsList.indexOf(this._formYear);
+      if (idx !== -1 && this._yearsList[idx - step]) {
+        this._formYear = this._yearsList[idx - step];
+        if (this._hasSearched) {
+            this._searchYear = this._formYear;
+        }
+        this.updateView();
+      }
+    }
+
+    // Logic thay đổi tháng ở tab Tra cứu
+    changeFormMonth(step) {
+      let currentVal = this._formMonth === '' ? 0 : parseInt(this._formMonth);
+      let newVal = currentVal + step;
+      if (newVal < 0) newVal = 0;
+      if (newVal > 12) newVal = 12;
+      this._formMonth = newVal === 0 ? '' : newVal;
+      
+      if (this._hasSearched) {
+          this._searchMonth = this._formMonth !== '' ? parseInt(this._formMonth) : null;
+      }
+      this.updateView();
+    }
+
     render() {
       if (!this.card) {
         this.card = document.createElement('ha-card');
@@ -645,11 +688,18 @@
         this.card.addEventListener('touchend', () => { this.startResetTimer(); });
 
         this.card.addEventListener('click', (e) => {
+          // Điều hướng Tổng quan
           if (e.target.closest('.btn-y-prev')) this.changeYear(-1);
           if (e.target.closest('.btn-y-next')) this.changeYear(1);
           if (e.target.closest('.btn-m-prev')) this.changeMonth(-1);
           if (e.target.closest('.btn-m-next')) this.changeMonth(1);
           
+          // Điều hướng Tra cứu
+          if (e.target.closest('.btn-sy-prev')) this.changeFormYear(-1);
+          if (e.target.closest('.btn-sy-next')) this.changeFormYear(1);
+          if (e.target.closest('.btn-sm-prev')) this.changeFormMonth(-1);
+          if (e.target.closest('.btn-sm-next')) this.changeFormMonth(1);
+
           if (e.target.closest('.tab-item')) {
               const clickedTab = e.target.closest('.tab-item').dataset.tab;
               if (this._activeTab !== clickedTab) {
@@ -684,24 +734,15 @@
           }
           if (e.target.id === 'form-year') {
               this._formYear = parseInt(e.target.value);
+              if (this._hasSearched) this._searchYear = this._formYear;
+              this.updateView();
+          }
+          if (e.target.id === 'form-month') {
+              this._formMonth = e.target.value;
+              if (this._hasSearched) this._searchMonth = this._formMonth !== "" ? parseInt(this._formMonth) : null;
               this.updateView();
           }
         });
-      }
-    }
-
-    changeYear(step) {
-      const idx = this._yearsList.indexOf(this._selectedYear);
-      if (idx !== -1 && this._yearsList[idx - step]) {
-        this._selectedYear = this._yearsList[idx - step]; this._selectedMonth = null; 
-        this.processData(); this.updateView();
-      }
-    }
-
-    changeMonth(step) {
-      const idx = this._monthsList.indexOf(this._selectedMonth);
-      if (idx !== -1 && this._monthsList[idx - step]) {
-        this._selectedMonth = this._monthsList[idx - step]; this.updateView();
       }
     }
 
@@ -1182,7 +1223,6 @@
           
           let chunks = [];
           for (let i = 0; i < this._yearsList.length; i += 10) {
-              // Bỏ .reverse() để mảng giữ nguyên thứ tự giảm dần từ năm mới nhất về năm cũ nhất
               chunks.push(this._yearsList.slice(i, i + 10)); 
           }
 
@@ -1228,6 +1268,7 @@
                 pointsVnd.push({x, y: y_coord}); return `${x},${y_coord}`;
               }).join(' ');
 
+              // ĐÃ FIX LỖI THIẾU NỀN THEO YÊU CẦU TRƯỚC
               let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK}; background: ${c_lineK};"></div>`).join('');
               let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV}; background: ${c_lineV};"></div>`).join('');
 
@@ -1508,13 +1549,29 @@
           html += `
              <div class="search-form-box">
                 <div class="s-grid">
-                    <select id="form-year" class="s-input">
-                        ${this._yearsList.map(y => `<option value="${y}" ${this._formYear === y ? 'selected' : ''}>${y}</option>`).join('')}
-                    </select>
-                    <select id="form-month" class="s-input">
-                        <option value="" ${this._formMonth === '' ? 'selected' : ''}>-- Cả năm --</option>
-                        ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${this._formMonth == m ? 'selected' : ''}>${m}</option>`).join('')}
-                    </select>
+                    <div class="control-pill" style="border: 1px solid rgba(0,0,0,0.1); background: rgba(0,0,0,0.03);">
+                        <div class="nav-btn btn-sy-prev" title="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+                        <div class="control-content" style="border-color: rgba(0,0,0,0.1);">
+                            <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
+                            <select id="form-year" class="styled-sel">
+                                ${this._yearsList.map(y => `<option value="${y}" ${this._formYear === y ? 'selected' : ''}>${y}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="nav-btn btn-sy-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+                    </div>
+                    
+                    <div class="control-pill" style="border: 1px solid rgba(0,0,0,0.1); background: rgba(0,0,0,0.03);">
+                        <div class="nav-btn btn-sm-prev" title="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+                        <div class="control-content" style="border-color: rgba(0,0,0,0.1);">
+                            <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
+                            <select id="form-month" class="styled-sel">
+                                <option value="" ${this._formMonth === '' ? 'selected' : ''}>-- Cả năm --</option>
+                                ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${this._formMonth == m ? 'selected' : ''}>${m}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="nav-btn btn-sm-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+                    </div>
+
                     <button id="btn-do-search" class="btn-search"><ha-icon icon="mdi:magnify" style="font-size:16px; margin-right:4px; margin-bottom:-2px;"></ha-icon>Tra cứu</button>
                 </div>
              </div>
