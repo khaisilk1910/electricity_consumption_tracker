@@ -46,7 +46,6 @@
       const currentTitle = conf.title || "";
       const currentIcon = conf.icon || "";
 
-      // Đã đổi màu mặc định của Line để khác biệt hoàn toàn với Cột xanh
       const chartColorFields = [
         { id: 'barKwh1', label: 'Cột kWh (Đỉnh)', default: '#3b82f6' },
         { id: 'barKwh2', label: 'Cột kWh (Đáy)', default: '#1e3a8a' },
@@ -518,12 +517,10 @@
       }
     }
 
-    // TỐI ƯU HÓA LUỒNG SET HASS - CHỐNG GIẬT LAG KHI LOAD
     set hass(hass) {
       const oldHass = this._hass;
       this._hass = hass;
       
-      // Lần đầu tiên chạy
       if (!this._initialized) {
         this.scanForInstances();
         this.processData();
@@ -532,17 +529,15 @@
         return;
       }
 
-      // Nếu chưa tìm thấy entity nào (HA khởi động chậm), thỉnh thoảng quét lại
       if (!this._currentEntityId || this._availableInstances.length === 0) {
         this.scanForInstances();
         if (this._availableInstances.length > 0) {
           this.processData();
         }
-        this.updateView(); // Vẫn gọi để xử lý hiệu ứng loading timeout
+        this.updateView(); 
         return;
       }
 
-      // CHỈ xử lý lại dữ liệu khi chính thẻ cấu hình của chúng ta thay đổi state
       if (oldHass && oldHass.states[this._currentEntityId] !== hass.states[this._currentEntityId]) {
         this.processData();
         this.updateView();
@@ -645,30 +640,33 @@
         this.card.addEventListener('touchend', () => { this.startResetTimer(); });
 
         this.card.addEventListener('click', (e) => {
+          const el = e.target;
+          if (!el || !el.closest) return; // Fail-safe bảo vệ DOM Element
+
           // Nút bấm cho tab Tổng quan
-          if (e.target.closest('.btn-y-prev')) this.changeYear(-1);
-          if (e.target.closest('.btn-y-next')) this.changeYear(1);
-          if (e.target.closest('.btn-m-prev')) this.changeMonth(-1);
-          if (e.target.closest('.btn-m-next')) this.changeMonth(1);
+          if (el.closest('.btn-y-prev')) this.changeYear(-1);
+          if (el.closest('.btn-y-next')) this.changeYear(1);
+          if (el.closest('.btn-m-prev')) this.changeMonth(-1);
+          if (el.closest('.btn-m-next')) this.changeMonth(1);
           
           // Nút bấm cho tab Tra cứu
-          if (e.target.closest('.btn-sy-prev')) this.changeSearchYear(-1);
-          if (e.target.closest('.btn-sy-next')) this.changeSearchYear(1);
-          if (e.target.closest('.btn-sm-prev')) this.changeSearchMonth(-1);
-          if (e.target.closest('.btn-sm-next')) this.changeSearchMonth(1);
+          if (el.closest('.btn-sy-prev')) this.changeSearchYear(-1);
+          if (el.closest('.btn-sy-next')) this.changeSearchYear(1);
+          if (el.closest('.btn-sm-prev')) this.changeSearchMonth(-1);
+          if (el.closest('.btn-sm-next')) this.changeSearchMonth(1);
 
-          if (e.target.closest('.tab-item')) {
-              const clickedTab = e.target.closest('.tab-item').dataset.tab;
+          if (el.closest('.tab-item')) {
+              const clickedTab = el.closest('.tab-item').dataset.tab;
               if (this._activeTab !== clickedTab) {
                   this._activeTab = clickedTab;
                   this.updateView();
               }
           }
 
-          // Thay đổi lại thành getElementById tuyệt đối an toàn
-          if (e.target.closest('#btn-do-search')) {
-              const selYear = this.shadowRoot.getElementById('sel-search-year');
-              const selMonth = this.shadowRoot.getElementById('sel-search-month');
+          if (el.closest('#btn-do-search')) {
+              // Sử dụng this.card.querySelector để lấy DOM an toàn tuyệt đối
+              const selYear = this.card.querySelector('#sel-search-year');
+              const selMonth = this.card.querySelector('#sel-search-month');
               if (selYear && selMonth) {
                   this._formYear = parseInt(selYear.value);
                   const mVal = selMonth.value;
@@ -682,24 +680,27 @@
         });
 
         this.card.addEventListener('change', (e) => {
-          if (e.target.id === 'sel-instance') {
-            this._currentEntityId = e.target.value; this._selectedYear = null; this._selectedMonth = null;
+          const el = e.target;
+          if (!el) return;
+
+          if (el.id === 'sel-instance') {
+            this._currentEntityId = el.value; this._selectedYear = null; this._selectedMonth = null;
             this._hasSearched = false;
             this.processData(); this.updateView();
           }
-          if (e.target.id === 'sel-year') { 
-            this._selectedYear = parseInt(e.target.value); this._selectedMonth = null; 
+          if (el.id === 'sel-year') { 
+            this._selectedYear = parseInt(el.value); this._selectedMonth = null; 
             this.processData(); this.updateView(); 
           }
-          if (e.target.id === 'sel-month') { 
-            this._selectedMonth = parseInt(e.target.value); this.updateView(); 
+          if (el.id === 'sel-month') { 
+            this._selectedMonth = parseInt(el.value); this.updateView(); 
           }
-          if (e.target.id === 'sel-search-year') {
-              this._formYear = parseInt(e.target.value);
+          if (el.id === 'sel-search-year') {
+              this._formYear = parseInt(el.value);
               this.triggerAutoSearch();
           }
-          if (e.target.id === 'sel-search-month') {
-              this._formMonth = e.target.value;
+          if (el.id === 'sel-search-month') {
+              this._formMonth = el.value;
               this.triggerAutoSearch();
           }
         });
@@ -739,7 +740,10 @@
 
     changeSearchYear(step) {
       if (!this._yearsList || this._yearsList.length === 0) return;
-      const idx = this._yearsList.indexOf(this._formYear);
+      let currentYear = this._formYear;
+      if (currentYear === null) currentYear = this._yearsList[0]; // Backup fail-safe
+      
+      const idx = this._yearsList.indexOf(currentYear);
       if (idx !== -1 && this._yearsList[idx - step] !== undefined) {
         this._formYear = this._yearsList[idx - step];
         this.triggerAutoSearch();
