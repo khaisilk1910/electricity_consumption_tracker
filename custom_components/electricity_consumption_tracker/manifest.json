@@ -1,7 +1,7 @@
 {
   "domain": "electricity_consumption_tracker",
   "name": "Electricity Consumption Tracker",
-  "version": "2026.04.08",
+  "version": "2026.04.10",
   "documentation": "https://github.com/khaisilk1910/electricity_consumption_tracker",
   "dependencies": [
     "lovelace",
