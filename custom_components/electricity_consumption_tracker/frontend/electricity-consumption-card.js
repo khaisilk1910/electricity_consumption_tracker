@@ -46,6 +46,7 @@
       const currentTitle = conf.title || "";
       const currentIcon = conf.icon || "";
 
+      // Đã đổi màu mặc định của Line để khác biệt hoàn toàn với Cột xanh
       const chartColorFields = [
         { id: 'barKwh1', label: 'Cột kWh (Đỉnh)', default: '#3b82f6' },
         { id: 'barKwh2', label: 'Cột kWh (Đáy)', default: '#1e3a8a' },
@@ -517,10 +518,12 @@
       }
     }
 
+    // TỐI ƯU HÓA LUỒNG SET HASS - CHỐNG GIẬT LAG KHI LOAD
     set hass(hass) {
       const oldHass = this._hass;
       this._hass = hass;
       
+      // Lần đầu tiên chạy
       if (!this._initialized) {
         this.scanForInstances();
         this.processData();
@@ -529,15 +532,17 @@
         return;
       }
 
+      // Nếu chưa tìm thấy entity nào (HA khởi động chậm), thỉnh lưu quét lại
       if (!this._currentEntityId || this._availableInstances.length === 0) {
         this.scanForInstances();
         if (this._availableInstances.length > 0) {
           this.processData();
         }
-        this.updateView(); 
+        this.updateView(); // Vẫn gọi để xử lý hiệu ứng loading timeout
         return;
       }
 
+      // CHỈ xử lý lại dữ liệu khi chính thẻ cấu hình của chúng ta thay đổi state
       if (oldHass && oldHass.states[this._currentEntityId] !== hass.states[this._currentEntityId]) {
         this.processData();
         this.updateView();
@@ -640,139 +645,108 @@
         this.card.addEventListener('touchend', () => { this.startResetTimer(); });
 
         this.card.addEventListener('click', (e) => {
-          const el = e.target;
-          if (!el || !el.closest) return; // Fail-safe bảo vệ DOM Element
+          // Các nút cho tab Tổng quan
+          if (e.target.closest('.btn-y-prev')) this.changeYear(-1);
+          if (e.target.closest('.btn-y-next')) this.changeYear(1);
+          if (e.target.closest('.btn-m-prev')) this.changeMonth(-1);
+          if (e.target.closest('.btn-m-next')) this.changeMonth(1);
 
-          // Nút bấm cho tab Tổng quan
-          if (el.closest('.btn-y-prev')) this.changeYear(-1);
-          if (el.closest('.btn-y-next')) this.changeYear(1);
-          if (el.closest('.btn-m-prev')) this.changeMonth(-1);
-          if (el.closest('.btn-m-next')) this.changeMonth(1);
+          // Các nút điều hướng cho tab Tra Cứu (chỉ đổi lựa chọn select, không auto search)
+          if (e.target.closest('.btn-fy-prev')) this.changeFormYear(-1);
+          if (e.target.closest('.btn-fy-next')) this.changeFormYear(1);
+          if (e.target.closest('.btn-fm-prev')) this.changeFormMonth(-1);
+          if (e.target.closest('.btn-fm-next')) this.changeFormMonth(1);
           
-          // Nút bấm cho tab Tra cứu
-          if (el.closest('.btn-sy-prev')) this.changeSearchYear(-1);
-          if (el.closest('.btn-sy-next')) this.changeSearchYear(1);
-          if (el.closest('.btn-sm-prev')) this.changeSearchMonth(-1);
-          if (el.closest('.btn-sm-next')) this.changeSearchMonth(1);
-
-          if (el.closest('.tab-item')) {
-              const clickedTab = el.closest('.tab-item').dataset.tab;
+          if (e.target.closest('.tab-item')) {
+              const clickedTab = e.target.closest('.tab-item').dataset.tab;
               if (this._activeTab !== clickedTab) {
                   this._activeTab = clickedTab;
                   this.updateView();
               }
           }
 
-          if (el.closest('#btn-do-search')) {
-              // Sử dụng this.card.querySelector để lấy DOM an toàn tuyệt đối
-              const selYear = this.card.querySelector('#sel-search-year');
-              const selMonth = this.card.querySelector('#sel-search-month');
-              if (selYear && selMonth) {
-                  this._formYear = parseInt(selYear.value);
-                  const mVal = selMonth.value;
-                  this._formMonth = mVal;
-                  this._searchYear = this._formYear;
-                  this._searchMonth = mVal !== "" ? parseInt(mVal) : null;
-                  this._hasSearched = true;
-                  this.updateView();
-              }
+          if (e.target.closest('#btn-do-search')) {
+              this._formYear = parseInt(this.shadowRoot.getElementById('form-year').value);
+              const mVal = this.shadowRoot.getElementById('form-month').value;
+              this._formMonth = mVal;
+              this._searchYear = this._formYear;
+              this._searchMonth = mVal !== "" ? parseInt(mVal) : null;
+              this._hasSearched = true;
+              this.updateView();
           }
         });
 
         this.card.addEventListener('change', (e) => {
-          const el = e.target;
-          if (!el) return;
-
-          if (el.id === 'sel-instance') {
-            this._currentEntityId = el.value; this._selectedYear = null; this._selectedMonth = null;
+          if (e.target.id === 'sel-instance') {
+            this._currentEntityId = e.target.value; this._selectedYear = null; this._selectedMonth = null;
             this._hasSearched = false;
             this.processData(); this.updateView();
           }
-          if (el.id === 'sel-year') { 
-            this._selectedYear = parseInt(el.value); this._selectedMonth = null; 
+          if (e.target.id === 'sel-year') { 
+            this._selectedYear = parseInt(e.target.value); this._selectedMonth = null; 
             this.processData(); this.updateView(); 
           }
-          if (el.id === 'sel-month') { 
-            this._selectedMonth = parseInt(el.value); this.updateView(); 
+          if (e.target.id === 'sel-month') { 
+            this._selectedMonth = parseInt(e.target.value); this.updateView(); 
           }
-          if (el.id === 'sel-search-year') {
-              this._formYear = parseInt(el.value);
-              this.triggerAutoSearch();
+          if (e.target.id === 'form-year') {
+              this._formYear = parseInt(e.target.value);
+              this.updateView();
           }
-          if (el.id === 'sel-search-month') {
-              this._formMonth = el.value;
-              this.triggerAutoSearch();
+          if (e.target.id === 'form-month') {
+              this._formMonth = e.target.value; 
+              this.updateView();
           }
         });
       }
     }
 
-    // ==========================================
-    // LOGIC CHUYỂN ĐỔI - TỔNG QUAN
-    // ==========================================
     changeYear(step) {
-      if (!this._yearsList || this._yearsList.length === 0) return;
       const idx = this._yearsList.indexOf(this._selectedYear);
-      if (idx !== -1 && this._yearsList[idx - step] !== undefined) {
+      if (idx !== -1 && this._yearsList[idx - step]) {
         this._selectedYear = this._yearsList[idx - step]; this._selectedMonth = null; 
         this.processData(); this.updateView();
       }
     }
 
     changeMonth(step) {
-      if (!this._monthsList || this._monthsList.length === 0) return;
       const idx = this._monthsList.indexOf(this._selectedMonth);
-      if (idx !== -1 && this._monthsList[idx - step] !== undefined) {
+      if (idx !== -1 && this._monthsList[idx - step]) {
         this._selectedMonth = this._monthsList[idx - step]; this.updateView();
       }
     }
 
-    // ==========================================
-    // LOGIC CHUYỂN ĐỔI - TRA CỨU
-    // ==========================================
-    triggerAutoSearch() {
-        if (this._hasSearched) {
-            this._searchYear = this._formYear;
-            this._searchMonth = this._formMonth !== "" ? parseInt(this._formMonth) : null;
-        }
-        this.updateView();
-    }
-
-    changeSearchYear(step) {
-      if (!this._yearsList || this._yearsList.length === 0) return;
-      let currentYear = this._formYear;
-      if (currentYear === null) currentYear = this._yearsList[0]; // Backup fail-safe
-      
-      const idx = this._yearsList.indexOf(currentYear);
-      if (idx !== -1 && this._yearsList[idx - step] !== undefined) {
+    changeFormYear(step) {
+      const idx = this._yearsList.indexOf(this._formYear);
+      if (idx !== -1 && this._yearsList[idx - step]) {
         this._formYear = this._yearsList[idx - step];
-        this.triggerAutoSearch();
+        this.updateView();
       }
     }
 
-    changeSearchMonth(step) {
-      const states = ['', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-      let current = this._formMonth;
-      if (current !== '') current = parseInt(current);
+    changeFormMonth(step) {
+      const mList = ['', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+      let currentVal = this._formMonth;
+      if (currentVal !== '') currentVal = parseInt(currentVal);
       
-      let idx = states.indexOf(current);
-      if (idx === -1) idx = 0;
-      
-      let newIdx = idx + step;
-      if (newIdx >= states.length) newIdx = 0; 
-      if (newIdx < 0) newIdx = states.length - 1; 
-      
-      this._formMonth = states[newIdx];
-      this.triggerAutoSearch();
+      const idx = mList.indexOf(currentVal);
+      if (idx !== -1) {
+          const newIdx = idx + step;
+          if (newIdx >= 0 && newIdx < mList.length) {
+              this._formMonth = mList[newIdx];
+              this.updateView();
+          }
+      }
     }
-
 
     updateView() {
       if (!this._hass || !this.card) return;
 
+      // THÊM LOGIC KIỂM TRA ĐANG LOAD HOẶC LỖI
       if (this._availableInstances.length === 0) {
         if (!this._loadStartTime) this._loadStartTime = Date.now();
         
+        // Đợi 8 giây, nếu vẫn ko có thì báo đỏ (người dùng chưa setup hoặc gỡ tracker)
         if (Date.now() - this._loadStartTime > 20000) {
             this.card.innerHTML = `
                 <div style="padding: 24px 16px; text-align: center; border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px dashed rgba(220, 38, 38, 0.3);">
@@ -781,6 +755,7 @@
                     <div style="color: #ef4444; font-size: 12px; margin-top: 4px;">Vui lòng kiểm tra lại cấu hình sensor trong HA.</div>
                 </div>`;
         } else {
+            // Hiệu ứng Loading đẹp mắt trong lúc chờ HA khởi động data
             this.card.innerHTML = `
                 <style>
                     .ha-card-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 16px; min-height: 150px; }
@@ -797,11 +772,12 @@
                     </div>
                 </div>
             `;
+            // Kích hoạt kiểm tra lại sau 1s để mốc thời gian 8s được đánh giá lại
             setTimeout(() => { if (this._availableInstances.length === 0) this.updateView(); }, 1000);
         }
         return;
       } else {
-        this._loadStartTime = null; 
+        this._loadStartTime = null; // Đã load xong, xóa cờ thời gian
       }
 
       if (!this._currentEntityId) return;
@@ -818,6 +794,9 @@
       const displayTitle = conf.title || "Thống kê Điện năng";
       const configIcon = conf.icon || "mdi:transmission-tower";
       
+      // ==========================================
+      // THUẬT TOÁN NỀN & AUTO CONTRAST 
+      // ==========================================
       const applyOpacityToGradientStr = (str, opacity) => {
           return str.replace(/#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\b/gi, (match) => hexToRgba(match, opacity));
       };
@@ -879,8 +858,8 @@
       let c_barK2 = conf.barKwh2 || '#1e3a8a';
       let c_barV1 = conf.barVnd1 || '#10b981';
       let c_barV2 = conf.barVnd2 || '#047857';
-      let c_lineK = conf.lineKwh || '#ff3366'; 
-      let c_lineV = conf.lineVnd || '#ffcc00'; 
+      let c_lineK = conf.lineKwh || '#ff3366'; // Hồng/Đỏ mặc định để dễ nhìn
+      let c_lineV = conf.lineVnd || '#ffcc00'; // Vàng tươi mặc định
       let c_lineM = conf.lineMonth || '#ff3366';
 
       if (conf.auto_contrast) {
@@ -957,13 +936,14 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#E65100'; }
                   else { c_red = '#E64A19'; }
                   
+                  // Bảng màu chéo cực đậm cho Light Theme (Line nổi rực rỡ so với cột)
                   const palettesLight = {
-                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'},
-                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'},
-                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'},
-                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'},
-                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'},
-                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'} 
+                      'blue':   {1: '#3b82f6', 2: '#1e3a8a', l: '#ef4444'}, // Blue bar -> Strong Red line
+                      'green':  {1: '#10b981', 2: '#047857', l: '#8b5cf6'}, // Green bar -> Strong Purple line
+                      'cyan':   {1: '#06b6d4', 2: '#0891b2', l: '#e11d48'}, // Cyan bar -> Strong Rose line
+                      'purple': {1: '#8b5cf6', 2: '#5b21b6', l: '#f59e0b'}, // Purple bar -> Strong Orange line
+                      'orange': {1: '#f97316', 2: '#c2410c', l: '#2563eb'}, // Orange bar -> Strong Blue line
+                      'pink':   {1: '#ec4899', 2: '#be185d', l: '#059669'}  // Pink bar -> Strong Emerald line
                   };
                   c_barK1 = palettesLight[chartPalette.kwh][1]; c_barK2 = palettesLight[chartPalette.kwh][2]; c_lineK = palettesLight[chartPalette.kwh].l;
                   c_barV1 = palettesLight[chartPalette.vnd][1]; c_barV2 = palettesLight[chartPalette.vnd][2]; c_lineV = palettesLight[chartPalette.vnd].l;
@@ -980,13 +960,14 @@
                   else if (hue >= 170 && hue < 260) { c_red = '#C6FF00'; }
                   else { c_red = '#FFD54F'; }
 
+                  // Bảng màu Neon chéo cực sáng cho Dark Theme (Line phát sáng so với cột)
                   const palettesDark = {
-                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'},
-                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'},
-                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'},
-                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'},
-                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'},
-                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'} 
+                      'blue':   {1: '#60a5fa', 2: '#3b82f6', l: '#fde047'}, // Blue bar -> Neon Yellow line
+                      'green':  {1: '#34d399', 2: '#10b981', l: '#f472b6'}, // Green bar -> Neon Pink line
+                      'cyan':   {1: '#22d3ee', 2: '#06b6d4', l: '#fb923c'}, // Cyan bar -> Neon Orange line
+                      'purple': {1: '#a78bfa', 2: '#8b5cf6', l: '#4ade80'}, // Purple bar -> Neon Green line
+                      'orange': {1: '#fb923c', 2: '#f97316', l: '#22d3ee'}, // Orange bar -> Neon Cyan line
+                      'pink':   {1: '#f472b6', 2: '#ec4899', l: '#fef08a'}  // Pink bar -> Neon Yellow line
                   };
                   c_barK1 = palettesDark[chartPalette.kwh][1]; c_barK2 = palettesDark[chartPalette.kwh][2]; c_lineK = palettesDark[chartPalette.kwh].l;
                   c_barV1 = palettesDark[chartPalette.vnd][1]; c_barV2 = palettesDark[chartPalette.vnd][2]; c_lineV = palettesDark[chartPalette.vnd].l;
@@ -1001,6 +982,9 @@
           ? `<ha-icon icon="${configIcon}"></ha-icon>` 
           : `<span class="emoji-icon">${configIcon}</span>`;
 
+      // ==========================================
+      // HELPER FUNCTIONS ĐỂ TẠO CÁC BIỂU ĐỒ & UI
+      // ==========================================
 
       const buildMonthChart = (y, m, isSearchMode = false) => {
         const mState = this._hass.states[`${this.baseSlug}_thang_${m}_${y}`];
@@ -1053,7 +1037,7 @@
                  <div class="s-stat-card"> <div class="s-label">⚡ Ngày cao nhất</div> <div class="s-val">Ngày ${maxDayStr}: <span class="primary">${formatNumber(maxDayVal)}</span> kWh</div> </div>
                  <div class="s-stat-card"> <div class="s-label">⚡ Ngày thấp nhất</div> <div class="s-val">Ngày ${minDayStr}: <span class="primary">${formatNumber(minDayVal)}</span> kWh</div> </div>
                  <div class="s-stat-card"> <div class="s-label">📊 Trung bình/Ngày</div> <div class="s-val"><span class="primary">${formatNumber(avgKwh)}</span> kWh</div> </div>
-                 <div class="s-stat-card"> <div class="s-label">💸 Tiền TB/Ngày</div> <div class="s-val"><span class="money">${formatMoney(avgVnd)} đ</span></div> </div>
+                 <div class="s-stat-card"> <div class="s-label">💸 Tiền TB/Ngày</div> <div class="s-val"><span class="money">${formatMoney(avgVnd)}</span> đ</div> </div>
               </div>
             `;
         }
@@ -1066,15 +1050,15 @@
               </div>
               <div class="chart-stats">
                 <div class="hover-zap" style="cursor: default;">
-                  <div class="c-stat-val primary">${formatNumber(m_kwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size:16px; margin-left: 4px;"></ha-icon></div>
+                  <div class="c-stat-val primary">${formatNumber(m_kwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size: clamp(12px, 3.5vw, 20px); margin-left: 2px;"></ha-icon></div>
                   <div class="stat-label">Sản lượng</div>
                 </div>
                 <div class="hover-fly" style="cursor: default;">
-                  <div class="c-stat-val money">${formatMoney(m_truoc)} <span class="emoji-money" style="font-size: 16px; margin-left: 4px;">💸</span></div>
+                  <div class="c-stat-val money">${formatMoney(m_truoc)} <span class="emoji-money" style="font-size: clamp(12px, 3.5vw, 20px); margin-left: 2px;">💸</span></div>
                   <div class="stat-label">Trước VAT</div>
                 </div>
                 <div class="hover-fly" style="cursor: default;">
-                  <div class="c-stat-val money">${formatMoney(m_sau)} <span class="emoji-money" style="font-size: 16px; margin-left: 4px;">💸</span></div>
+                  <div class="c-stat-val money">${formatMoney(m_sau)} <span class="emoji-money" style="font-size: clamp(12px, 3.5vw, 20px); margin-left: 2px;">💸</span></div>
                   <div class="stat-label">Sau VAT</div>
                 </div>
               </div>
@@ -1169,10 +1153,10 @@
 
             searchStatsHtml = `
               <div class="search-stats-grid">
-                 <div class="s-stat-card"> <div class="s-label">⚡ Tháng cao nhất</div> <div class="s-val">Tháng ${maxMStr}: <span class="primary">${formatNumber(maxMKwh)}</span> kWh <br><span class="money" style="font-size: 0.9em;">(${formatMoney(maxMVnd)} đ)</span></div> </div>
-                 <div class="s-stat-card"> <div class="s-label">⚡ Tháng thấp nhất</div> <div class="s-val">Tháng ${minMStr}: <span class="primary">${formatNumber(minMKwh)}</span> kWh <br><span class="money" style="font-size: 0.9em;">(${formatMoney(minMVnd)} đ)</span></div> </div>
+                 <div class="s-stat-card"> <div class="s-label">⚡ Tháng cao nhất</div> <div class="s-val">Tháng ${maxMStr}: <span class="primary">${formatNumber(maxMKwh)}</span> kWh <br><span style="font-size: 0.9em;">(<span class="money">${formatMoney(maxMVnd)}</span> đ)</span></div> </div>
+                 <div class="s-stat-card"> <div class="s-label">⚡ Tháng thấp nhất</div> <div class="s-val">Tháng ${minMStr}: <span class="primary">${formatNumber(minMKwh)}</span> kWh <br><span style="font-size: 0.9em;">(<span class="money">${formatMoney(minMVnd)}</span> đ)</span></div> </div>
                  <div class="s-stat-card"> <div class="s-label">📊 Trung bình/Tháng</div> <div class="s-val"><span class="primary">${formatNumber(avgKwh)}</span> kWh</div> </div>
-                 <div class="s-stat-card"> <div class="s-label">💸 Tiền TB/Tháng</div> <div class="s-val"><span class="money">${formatMoney(avgVnd)} đ</span></div> </div>
+                 <div class="s-stat-card"> <div class="s-label">💸 Tiền TB/Tháng</div> <div class="s-val"><span class="money">${formatMoney(avgVnd)}</span> đ</div> </div>
               </div>
             `;
         }
@@ -1185,15 +1169,15 @@
               </div>
               <div class="chart-stats">
                 <div class="hover-zap" style="cursor: default;">
-                  <div class="c-stat-val primary">${formatNumber(y_kwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size:16px; margin-left: 4px;"></ha-icon></div>
+                  <div class="c-stat-val primary">${formatNumber(y_kwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size: clamp(12px, 3.5vw, 20px); margin-left: 2px;"></ha-icon></div>
                   <div class="stat-label">Sản lượng</div>
                 </div>
                 <div class="hover-fly" style="cursor: default;">
-                  <div class="c-stat-val money">${formatMoney(y_truoc)} <span class="emoji-money" style="font-size: 16px; margin-left: 4px;">💸</span></div>
+                  <div class="c-stat-val money">${formatMoney(y_truoc)} <span class="emoji-money" style="font-size: clamp(12px, 3.5vw, 20px); margin-left: 2px;">💸</span></div>
                   <div class="stat-label">Trước VAT</div>
                 </div>
                 <div class="hover-fly" style="cursor: default;">
-                  <div class="c-stat-val money">${formatMoney(y_sau)} <span class="emoji-money" style="font-size: 16px; margin-left: 4px;">💸</span></div>
+                  <div class="c-stat-val money">${formatMoney(y_sau)} <span class="emoji-money" style="font-size: clamp(12px, 3.5vw, 20px); margin-left: 2px;">💸</span></div>
                   <div class="stat-label">Sau VAT</div>
                 </div>
               </div>
@@ -1275,8 +1259,8 @@
                 pointsVnd.push({x, y: y_coord}); return `${x},${y_coord}`;
               }).join(' ');
 
-              let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK};"></div>`).join('');
-              let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV};"></div>`).join('');
+              let dotsKwhHtml = pointsKwh.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineK}; background: ${c_lineK};"></div>`).join('');
+              let dotsVndHtml = pointsVnd.map(p => `<div class="chart-dot" style="left: ${p.x}%; top: ${p.y}%; border: 1.5px solid ${c_lineV}; background: ${c_lineV};"></div>`).join('');
 
               let minYear = Math.min(...chunk);
               let maxYear = Math.max(...chunk);
@@ -1285,15 +1269,15 @@
               let summaryHtml = `
                 <div class="decade-summary">
                   <div class="d-sum-item hover-zap" style="cursor: default;">
-                    <div class="d-sum-val">${formatNumber(totalKwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size: clamp(16px, 4vw, 20px);"></ha-icon></div>
+                    <div class="d-sum-val">${formatNumber(totalKwh)} <ha-icon icon="mdi:lightning-bolt" class="icon-kwh" style="font-size: clamp(12px, 3.5vw, 20px);"></ha-icon></div>
                     <div class="d-sum-label">Sản lượng</div>
                   </div>
                   <div class="d-sum-item hover-fly" style="cursor: default;">
-                    <div class="d-sum-val money">${formatMoney(totalTruocVat)} <span class="emoji-money" style="font-size: clamp(16px, 4vw, 20px);">💸</span></div>
+                    <div class="d-sum-val money">${formatMoney(totalTruocVat)} <span class="emoji-money" style="font-size: clamp(12px, 3.5vw, 20px);">💸</span></div>
                     <div class="d-sum-label">Trước VAT</div>
                   </div>
                   <div class="d-sum-item hover-fly" style="cursor: default;">
-                    <div class="d-sum-val money">${formatMoney(totalSauVat)} <span class="emoji-money" style="font-size: clamp(16px, 4vw, 20px);">💸</span></div>
+                    <div class="d-sum-val money">${formatMoney(totalSauVat)} <span class="emoji-money" style="font-size: clamp(12px, 3.5vw, 20px);">💸</span></div>
                     <div class="d-sum-label">Sau VAT</div>
                   </div>
                 </div>
@@ -1335,6 +1319,9 @@
           }).join('');
       };
 
+      // ==========================================
+      // LẮP RÁP UI CHÍNH
+      // ==========================================
 
       let html = `
         <style>
@@ -1379,24 +1366,20 @@
           }
           select.main-sel:hover { background: rgba(0,0,0,0.6); }
 
-          .btn-search { background: #3b82f6; color: white; border: none; padding: clamp(8px, 2vw, 10px) 16px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: background 0.2s; font-size: clamp(12px, 3.5vw, 14px); white-space: nowrap; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);}
-          .btn-search:hover { background: #2563eb; transform: translateY(-1px); }
-
-          .search-stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(8px, 1.5vw, 16px); margin-bottom: 16px; }
-          .s-stat-card { background: var(--block-bg); border-radius: 8px; padding: clamp(10px, 2vw, 20px); box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: clamp(60px, 8vw, 80px);}
-          .s-label { font-size: clamp(11px, 2vw, 15px); font-weight: 700; color: var(--text-main); opacity: 0.7; margin-bottom: clamp(4px, 1vw, 8px); }
-          .s-val { font-size: clamp(13px, 2.5vw, 18px); font-weight: 800; color: var(--text-main); line-height: 1.4; }
-          .s-val .primary { color: #3b82f6; font-size: clamp(15px, 3.5vw, 24px); }
-          .s-val .money { color: var(--text-red); font-size: clamp(15px, 3.5vw, 24px); }
-
+          /* STAT BOX OVERVIEW */
           .global-stats-compact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; text-align: center; width: 100%; box-sizing: border-box; }
-          .stat-box { display: flex; flex-direction: column; justify-content: center; cursor: default; transition: background 0.3s; border-radius: 8px; padding: clamp(2px, 1vw, 4px) 2px; min-width: 0; overflow: hidden; }
+          .stat-box { display: flex; flex-direction: column; justify-content: center; cursor: default; transition: background 0.3s; border-radius: 8px; padding: clamp(2px, 1vw, 4px) 2px; min-width: 0; overflow: visible !important; position: relative; z-index: 10;}
+          .stat-box:hover { z-index: 100; }
+          
           .stat-box.primary { border-right: 1px solid rgba(0,0,0,0.05); }
           .stat-box.primary .stat-value { color: var(--text-main); }
-          .stat-value { font-size: clamp(12px, 3.5vw, 17px); font-weight: 800; color: var(--text-red); display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px; line-height: 1.1;}
+          .stat-value { font-size: clamp(11px, 3.5vw, 17px); font-weight: 800; color: var(--text-red); display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px; line-height: 1.1;}
           .stat-unit { font-size: clamp(10px, 2.5vw, 13px); color: var(--text-main); opacity: 0.7; font-weight: 600; white-space: nowrap;}
           .stat-label { font-size: clamp(10px, 2.5vw, 12px); font-weight: 700; color: var(--text-main); opacity: 0.6; margin-top: 2px; letter-spacing: 0.1px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; width: 100%;}
-          .emoji-money, .icon-kwh { flex-shrink: 0; }
+          .emoji-money, .icon-kwh { flex-shrink: 0; position: relative; z-index: 999; }
+          
+          .hover-zap, .hover-fly { position: relative; z-index: 10; overflow: visible !important; transition: z-index 0.3s; }
+          .hover-zap:hover, .hover-fly:hover { z-index: 100; }
           
           .icon-kwh { color: #f59e0b; transition: all 0.3s; transform-origin: center; display: inline-block; }
           @keyframes zapHover { 0% { transform: scale(1) rotate(0deg); filter: brightness(1); } 20% { transform: scale(1.5) rotate(-15deg); filter: brightness(1.5) drop-shadow(0 0 6px #fbbf24); color: #fcd34d; } 40% { transform: scale(1.5) rotate(15deg); filter: brightness(1.8) drop-shadow(0 0 10px #fef3c7); color: #fef3c7; } 60% { transform: scale(1.5) rotate(-15deg); filter: brightness(1.5) drop-shadow(0 0 6px #fbbf24); color: #fcd34d; } 80% { transform: scale(1.5) rotate(15deg); filter: brightness(1.2) drop-shadow(0 0 4px #f59e0b); color: #fbbf24; } 100% { transform: scale(1) rotate(0deg); filter: brightness(1); } }
@@ -1417,19 +1400,64 @@
           .nav-btn:hover { background: rgba(59, 130, 246, 0.1); color: var(--text-main); }
           .nav-btn ha-icon { font-size: clamp(18px, 5vw, 20px); }
 
+          /* TÌM KIẾM - FLUID FLEXBOX ĐÁP ỨNG MỌI MÀN HÌNH */
+          .search-bar-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            gap: clamp(6px, 2vw, 10px);
+            margin-bottom: 12px;
+          }
+          .search-inputs {
+            display: flex;
+            flex: 99 1 250px; /* BÍ QUYẾT: Chiếm hết 99% không gian thừa để đẩy nút Tra Cứu gọn lại trên Desktop */
+            gap: clamp(6px, 2vw, 10px);
+          }
+          .search-inputs .control-pill {
+            flex: 1;
+            min-width: 0; 
+            margin-bottom: 0;
+          }
+          .search-bar-wrapper .btn-search {
+            flex: 1 1 120px; /* BÍ QUYẾT: Trên desktop chỉ lấy 1 phần rất nhỏ ko gian dư. Bị rớt dòng trên Mobile tự căng 100% */
+            border-radius: 50px;
+            padding: 8px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+            border: 1px solid rgba(0,0,0,0.05);
+            margin: 0;
+            white-space: nowrap;
+            background: #3b82f6;
+            color: white;
+            font-weight: bold;
+            font-size: clamp(12px, 3.5vw, 14px);
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .search-bar-wrapper .btn-search:hover { background: #2563eb; }
+
+          .search-stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(8px, 1.5vw, 12px); margin-bottom: 12px; }
+          .s-stat-card { background: var(--block-bg); border-radius: 8px; padding: clamp(8px, 1.5vw, 12px); box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); text-align: center; display: flex; flex-direction: column; justify-content: center; min-height: 50px;}
+          .s-label { font-size: clamp(11px, 2vw, 14px); font-weight: 700; color: var(--text-main); opacity: 0.7; margin-bottom: 2px; }
+          .s-val { font-size: clamp(12px, 2.5vw, 16px); font-weight: 800; color: var(--text-main); line-height: 1.2; }
+          .s-val .primary { color: #3b82f6; font-size: clamp(14px, 3.5vw, 22px); }
+          .s-val .money { color: var(--text-red); font-size: clamp(14px, 3.5vw, 22px); }
+
           .chart-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom: 8px; }
           .chart-title { font-weight: 800; font-size: clamp(14px, 3.8vw, 18px); display: flex; align-items: flex-end; gap: 4px; color: var(--text-main); width: 100%; justify-content: space-between; margin-bottom: 4px;}
           .chart-title span { display: flex; align-items: flex-end; gap: 6px; line-height: 1; }
-          .chart-stats { display: flex; gap: 4px; text-align: right; width: 100%; justify-content: space-between; flex-wrap: wrap; }
-          .c-stat-val { font-size: clamp(11px, 3vw, 16px); font-weight: 800; display:flex; align-items:center; justify-content:flex-end; gap: 2px; flex-wrap: wrap; letter-spacing: -0.3px;}
+          
+          .chart-stats { display: flex; gap: 4px; text-align: right; width: 100%; justify-content: space-between; flex-wrap: wrap; position: relative; z-index: 20; overflow: visible !important;}
+          .c-stat-val { font-size: clamp(11px, 3.2vw, 20px); font-weight: 900; display:flex; align-items:center; justify-content:flex-end; gap: 4px; flex-wrap: wrap; letter-spacing: -0.5px; line-height: 1.1; overflow: visible !important; position: relative; z-index: 30;}
           .c-stat-val.primary { color: var(--text-main); } .c-stat-val.money { color: var(--text-red); }   
           
-          .decade-summary { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 12px 8px; margin-bottom: 12px; border-bottom: 1px dashed rgba(0,0,0,0.08);}
-          .d-sum-item { display: flex; flex-direction: column; }
+          .decade-summary { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 12px 8px; margin-bottom: 12px; border-bottom: 1px dashed rgba(0,0,0,0.08); position: relative; z-index: 20; overflow: visible !important;}
+          .d-sum-item { display: flex; flex-direction: column; position: relative; z-index: 30; overflow: visible !important; }
           .d-sum-item:nth-child(1) { align-items: flex-start; }
           .d-sum-item:nth-child(2) { align-items: center; }
           .d-sum-item:nth-child(3) { align-items: flex-end; }
-          .d-sum-val { font-size: clamp(14px, 4vw, 22px); font-weight: 900; display: flex; align-items: center; gap: 4px; color: var(--text-main); letter-spacing: -0.5px; line-height: 1.1;}
+          .d-sum-val { font-size: clamp(11px, 3.2vw, 20px); font-weight: 900; display: flex; align-items: center; gap: 4px; color: var(--text-main); letter-spacing: -0.5px; line-height: 1.1; overflow: visible !important; position: relative; z-index: 40;}
           .d-sum-val.money { color: var(--text-red); }
           .d-sum-label { font-size: clamp(10px, 2.5vw, 12px); font-weight: 600; color: var(--text-main); opacity: 0.6; margin-top: 4px; }
 
@@ -1488,6 +1516,9 @@
       `;
 
       if (this._activeTab === 'overview') {
+          // ==============================
+          // RENDER TAB: TỔNG QUAN
+          // ==============================
           const t_kwh = totalState.state;
           const t_truoc = totalState.attributes.tong_tien_tich_luy;
           const t_sau = totalState.attributes.tong_tien_tich_luy_sau_thue;
@@ -1526,7 +1557,7 @@
                 <div class="control-content">
                   <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
                   <select id="sel-month" class="styled-sel">
-                    ${this._monthsList.map(m => `<option value="${m}" ${this._selectedMonth === m ? 'selected' : ''}>${m}</option>`).join('')}
+                    ${this._monthsList.map(m => `<option value="${m}" ${this._selectedMonth === m ? 'selected' : ''}>T${m}</option>`).join('')}
                   </select>
                 </div>
                 <div class="nav-btn btn-m-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
@@ -1538,37 +1569,40 @@
           html += buildYearChart(this._selectedYear, false);
 
       } else {
+          // ==============================
+          // RENDER TAB: TRA CỨU
+          // ==============================
           html += `
-             <div class="controls" style="margin-bottom: 12px;">
-              <div class="control-pill">
-                <div class="nav-btn btn-sy-prev" title="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
-                <div class="control-content">
-                  <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
-                  <select id="sel-search-year" class="styled-sel">
-                    ${this._yearsList.map(y => `<option value="${y}" ${this._formYear === y ? 'selected' : ''}>${y}</option>`).join('')}
-                  </select>
-                </div>
-                <div class="nav-btn btn-sy-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
-              </div>
-              
-              <div class="control-pill">
-                <div class="nav-btn btn-sm-prev" title="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
-                <div class="control-content">
-                  <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
-                  <select id="sel-search-month" class="styled-sel">
-                    <option value="" ${this._formMonth === '' ? 'selected' : ''}>-- Cả năm --</option>
-                    ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${this._formMonth == m ? 'selected' : ''}>${m}</option>`).join('')}
-                  </select>
-                </div>
-                <div class="nav-btn btn-sm-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
-              </div>
-            </div>
+             <div class="search-bar-wrapper">
+                <div class="search-inputs">
+                    <div class="control-pill">
+                        <div class="nav-btn btn-fy-prev" title="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+                        <div class="control-content">
+                            <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
+                            <select id="form-year" class="styled-sel">
+                            ${this._yearsList.map(y => `<option value="${y}" ${this._formYear === y ? 'selected' : ''}>${y}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="nav-btn btn-fy-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+                    </div>
 
-            <div style="display: flex; justify-content: center; margin-bottom: 16px;">
-                <button id="btn-do-search" class="btn-search" style="width: 100%;">
-                    <ha-icon icon="mdi:magnify" style="font-size:18px; margin-right:4px; margin-bottom:-2px;"></ha-icon> Bắt đầu Tra cứu
+                    <div class="control-pill">
+                        <div class="nav-btn btn-fm-prev" title="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+                        <div class="control-content">
+                            <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
+                            <select id="form-month" class="styled-sel">
+                            <option value="" ${this._formMonth === '' ? 'selected' : ''}>-- Cả năm --</option>
+                            ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${this._formMonth == m ? 'selected' : ''}>T${m}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="nav-btn btn-fm-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+                    </div>
+                </div>
+
+                <button id="btn-do-search" class="btn-search">
+                    <ha-icon icon="mdi:magnify" style="font-size:18px; margin-right:6px; margin-bottom:-2px;"></ha-icon>Tra cứu
                 </button>
-            </div>
+             </div>
           `;
 
           if (this._hasSearched && this._searchYear) {
