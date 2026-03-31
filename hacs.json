@@ -3,7 +3,7 @@
   "content_type": "integration",
   "homeassistant": "2024.1.0",
   "persistent_directory": "custom_components/electricity_consumption_tracker",
-  "zip_release": false,
+  "zip_release": true,
   "filename": "custom_components/electricity_consumption_tracker",
   "render_readme": true,
   "country": ["VN"]
