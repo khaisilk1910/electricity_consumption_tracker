@@ -1,16 +1,22 @@
 {
   "domain": "electricity_consumption_tracker",
   "name": "Electricity Consumption Tracker",
-  "version": "2026.05.30",
+  "version": "2026.11.1",
   "documentation": "https://github.com/khaisilk1910/electricity_consumption_tracker",
   "dependencies": [
-    "lovelace",
-    "frontend"
+    "frontend",
+    "http",
+    "lovelace"
   ],
   "codeowners": [
     "@khaisilk1910"
   ],
   "iot_class": "local_polling",
   "config_flow": true,
-  "requirements": []
+  "requirements": [],
+  "issue_tracker": "https://github.com/khaisilk1910/electricity_consumption_tracker/issues",
+  "categories": [
+    "energy.meters_monitoring"
+  ],
+  "integration_type": "service"
 }

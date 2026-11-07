@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Electricity Consumption Tracker",
+        "description": "Select a DAILY consumption sensor (kWh or Wh). Do not select a cumulative meter or instantaneous power sensor.",
+        "data": {
+          "friendly_name": "Tracker name",
+          "source_sensor": "Daily consumption sensor",
+          "update_interval": "Read interval (hours)",
+          "billing_day": "Billing cycle rollover day (1-28)",
+          "start_date_apply": "Date to begin using a custom billing cycle",
+          "source_day_offset": "Source measurement day (0=today, 1=yesterday)"
+        }
+      }
+    },
+    "error": {
+      "invalid_date": "Enter a valid effective date (YYYY-MM-DD).",
+      "invalid_day": "Enter a billing day from 1-28 and source offset 0 or 1.",
+      "invalid_interval": "The read interval must be 1-24 hours."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tracker settings",
+        "description": "Historical bills will be recalculated in the background when billing settings change.",
+        "data": {
+          "source_sensor": "Daily consumption sensor",
+          "update_interval": "Read interval (hours)",
+          "billing_day": "Billing cycle rollover day (1-28)",
+          "start_date_apply": "Date to begin using a custom billing cycle",
+          "source_day_offset": "Source measurement day (0=today, 1=yesterday)"
+        }
+      }
+    },
+    "error": {
+      "invalid_date": "Enter a valid effective date (YYYY-MM-DD).",
+      "invalid_day": "Enter a billing day from 1-28 and source offset 0 or 1.",
+      "invalid_interval": "The read interval must be 1-24 hours."
+    }
+  }
+}

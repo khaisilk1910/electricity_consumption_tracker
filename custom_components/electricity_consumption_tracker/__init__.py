@@ -1,486 +1,224 @@
-"""The Electricity Consumption Tracker integration."""
-import sqlite3
-import os
-import logging
-import voluptuous as vol
-from datetime import timedelta, date, datetime
-import homeassistant.util.dt as dt_util
+"""Electricity Consumption Tracker integration for Home Assistant 2026.11+."""
+from __future__ import annotations
 
+from datetime import date, timedelta
+import sqlite3
+import logging
+import math
+from pathlib import Path
+
+import voluptuous as vol
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
-from homeassistant.helpers.event import async_track_time_interval, async_track_time_change
-from homeassistant.helpers.dispatcher import async_dispatcher_send
-
-# --- THÊM CÁC IMPORT CHO GIAO DIỆN UI ---
-from homeassistant.components.http import StaticPathConfig
-from homeassistant.components.frontend import add_extra_js_url
-from homeassistant.components.lovelace.resources import ResourceStorageCollection
+from homeassistant.helpers.event import async_track_time_change, async_track_time_interval
+from homeassistant.util import dt as dt_util
 
 from .const import (
-    DOMAIN, CONF_SOURCE_SENSOR, CONF_UPDATE_INTERVAL, PRICE_HISTORY, 
-    CONF_FRIENDLY_NAME, SIGNAL_UPDATE_SENSORS, get_vat_rate,
-    CONF_BILLING_DAY, CONF_START_DATE_APPLY
+    CONF_BILLING_DAY, CONF_FRIENDLY_NAME, CONF_SOURCE_DAY_OFFSET,
+    CONF_SOURCE_SENSOR, CONF_START_DATE_APPLY, CONF_UPDATE_INTERVAL,
+    DEFAULT_APPLY_DATE, DOMAIN,
 )
+from .storage import ElectricityStore
 
 _LOGGER = logging.getLogger(__name__)
-
-# Khai báo đường dẫn ảo trên web và thư mục thực tế chứa UI thẻ Card
-UI_URL_BASE = "/electricity_consumption_ui"
-UI_DIR_PATH = "frontend"
+PLATFORMS = ["sensor"]
+VERSION = "2026.11.1"
+CARD_URL = "/electricity_consumption_ui/electricity-consumption-card.js"
+CARD_RESOURCE = f"{CARD_URL}?v={VERSION}"
 
 SERVICE_OVERRIDE_SCHEMA = vol.Schema({
     vol.Required("entry_id"): cv.string,
     vol.Required("date"): vol.Any(cv.date, cv.datetime),
-    vol.Required("value"): vol.Coerce(float),
+    vol.Required("value"): vol.All(vol.Coerce(float), vol.Range(min=0)),
 })
 
 
-# =========================================================
-# HÀM TỰ ĐỘNG THÊM THẺ VÀO LOVELACE RESOURCES
-# =========================================================
-async def init_resource(hass: HomeAssistant, url: str, ver: str) -> bool:
-    """Hàm tự động thêm thẻ vào Lovelace Resources với định dạng hacstag."""
-    url_with_version = f"{url}?hacstag={ver}"
-
-    if "lovelace" not in hass.data:
-        _LOGGER.debug("Lovelace chưa được tải, sử dụng add_extra_js_url fallback.")
-        add_extra_js_url(hass, url_with_version)
-        return False
-
-    lovelace = hass.data.get("lovelace")
-    resources: ResourceStorageCollection = (
-        lovelace.resources if hasattr(lovelace, "resources") else lovelace.get("resources")
-    )
-
-    if not resources:
-        return False
-
-    if hasattr(resources, "async_get_info"):
-        await resources.async_get_info()
-
-    for item in resources.async_items():
-        item_url = item.get("url", "")
-        
-        # LOGIC SO SÁNH CHÍNH XÁC: Phải khớp hoàn toàn hoặc chỉ khác tham số phía sau ?
-        if item_url == url or item_url.startswith(f"{url}?"):
-            if item_url.endswith(f"hacstag={ver}"):
-                return False # Đã đúng phiên bản, không làm gì cả
-
-            _LOGGER.debug(f"Cập nhật Lovelace resource thành: {url_with_version}")
-
-            if isinstance(resources, ResourceStorageCollection):
-                await resources.async_update_item(
-                    item["id"], {"res_type": "module", "url": url_with_version}
-                )
-            else:
-                item["url"] = url_with_version
-
-            return True
-
-    if isinstance(resources, ResourceStorageCollection):
-        _LOGGER.debug(f"Thêm mới Lovelace resource: {url_with_version}")
-        await resources.async_create_item({"res_type": "module", "url": url_with_version})
-    else:
-        _LOGGER.debug(f"Thêm extra JS module (chế độ YAML): {url_with_version}")
-        add_extra_js_url(hass, url_with_version)
-
-    return True
+def _entry_settings(entry: ConfigEntry) -> tuple[int, date, int]:
+    settings = {**entry.data, **entry.options}
+    billing_day = int(settings.get(CONF_BILLING_DAY, 1))
+    apply_date = date.fromisoformat(str(settings.get(CONF_START_DATE_APPLY, DEFAULT_APPLY_DATE)))
+    offset = int(settings.get(CONF_SOURCE_DAY_OFFSET, 0))
+    if not 1 <= billing_day <= 28 or offset not in (0, 1):
+        raise ValueError("Invalid billing day or source day offset")
+    return billing_day, apply_date, offset
 
 
-# --- HELPER FUNCTIONS ---
-
-def get_billing_period(current_date: date, billing_day: int, apply_date: date):
-    if current_date < apply_date:
-        return current_date.year, current_date.month
-
-    if billing_day == 1:
-        return current_date.year, current_date.month
-    
-    if current_date.day < billing_day:
-        return current_date.year, current_date.month
-    else:
-        next_month = current_date.month + 1
-        year = current_date.year
-        if next_month > 12:
-            next_month = 1
-            year += 1
-        return year, next_month
-
-def get_accurate_billing_range(year, month, billing_day, apply_date):
-    anchor_date = date(year, month, 1)
-    
-    start_date = anchor_date
-    end_date = anchor_date
-
-    for i in range(1, 45):
-        prev_d = anchor_date - timedelta(days=i)
-        p_y, p_m = get_billing_period(prev_d, billing_day, apply_date)
-        if p_y == year and p_m == month:
-            start_date = prev_d
+async def _register_card_resource(hass: HomeAssistant) -> None:
+    """Register one resource for all entries; never touch resources per entry."""
+    try:
+        lovelace = hass.data.get("lovelace")
+        resources = getattr(lovelace, "resources", None)
+        mode = getattr(lovelace, "resource_mode", None)
+        if resources and mode != "yaml":
+            # First load the collection before examining or modifying it.
+            # Avoids overwriting lazily initialized Lovelace resource storage.
+            await resources.async_get_info()
+            matches = [item for item in resources.async_items()
+                       if item.get("url", "").split("?", 1)[0] == CARD_URL]
+            if matches:
+                existing = matches[0]
+                if existing.get("url") != CARD_RESOURCE or existing.get("type", existing.get("res_type")) != "module":
+                    await resources.async_update_item(existing["id"], {"url": CARD_RESOURCE, "res_type": "module"})
+                    _LOGGER.info("Updated Lovelace card resource to %s", CARD_RESOURCE)
+                if len(matches) > 1:
+                    _LOGGER.warning("Found %d duplicate Electricity Tracker resources; remove extras from Dashboard resources", len(matches))
+                return
+            await resources.async_create_item({"url": CARD_RESOURCE, "res_type": "module"})
+            _LOGGER.info("Registered Lovelace card resource: %s", CARD_RESOURCE)
         else:
-            break
-
-    for i in range(1, 45):
-        next_d = anchor_date + timedelta(days=i)
-        n_y, n_m = get_billing_period(next_d, billing_day, apply_date)
-        if n_y == year and n_m == month:
-            end_date = next_d
-        else:
-            break
-
-    return start_date, end_date
-
-def calculate_cost(kwh, year, month):
-    target_date = f"{year}-{month:02d}-01"
-    valid_dates = [d for d in PRICE_HISTORY if d <= target_date]
-    if not valid_dates:
-        tiers = PRICE_HISTORY[sorted(PRICE_HISTORY.keys())[0]]
-    else:
-        tiers = PRICE_HISTORY[sorted(valid_dates)[-1]]
-        
-    cost = 0
-    remaining_kwh = kwh
-    for limit, price in tiers:
-        if remaining_kwh <= 0: break
-        usage = min(remaining_kwh, limit) if limit != float('inf') else remaining_kwh
-        cost += usage * price
-        remaining_kwh -= usage
-    return round(cost)
-
-def perform_db_calculation(cursor, y, m, d, val, billing_day, apply_date_str):
-    apply_date = datetime.strptime(apply_date_str, "%Y-%m-%d").date()
-    current_date_obj = date(y, m, d)
-
-    cursor.execute("""
-        INSERT OR REPLACE INTO daily_usage (nam, thang, ngay, san_luong, don_vi)
-        VALUES (?, ?, ?, ?, 'kWh')
-    """, (y, m, d, val))
-    
-    b_year, b_month = get_billing_period(current_date_obj, billing_day, apply_date)
-    
-    _calculate_single_month(cursor, b_year, b_month, billing_day, apply_date)
-    _calculate_single_year(cursor, b_year)
-    recalculate_total_usage(cursor)
-
-def _calculate_single_month(cursor, b_year, b_month, billing_day, apply_date):
-    start_date, end_date = get_accurate_billing_range(b_year, b_month, billing_day, apply_date)
-    
-    start_str = start_date.strftime("%Y-%m-%d")
-    end_str = end_date.strftime("%Y-%m-%d")
-
-    cursor.execute(f"""
-        SELECT SUM(san_luong) 
-        FROM daily_usage 
-        WHERE printf('%04d-%02d-%02d', nam, thang, ngay) BETWEEN ? AND ?
-    """, (start_str, end_str))
-    
-    monthly_sum = cursor.fetchone()[0] or 0.0
-    monthly_cost = calculate_cost(monthly_sum, b_year, b_month)
-    
-    vat_rate = get_vat_rate(end_date.year, end_date.month, end_date.day)
-    vat_int = int(vat_rate * 100)
-    post_tax_cost = int(monthly_cost * (1 + vat_rate))
-
-    cursor.execute("""
-        INSERT OR REPLACE INTO monthly_bill 
-        (nam, thang, tong_san_luong, don_vi_san_luong, thanh_tien, don_vi_tien, 
-         thanh_tien_sau_thue, vat, ngay_bat_dau, ngay_ket_thuc)
-        VALUES (?, ?, ?, 'kWh', ?, 'đ', ?, ?, ?, ?)
-    """, (b_year, b_month, monthly_sum, monthly_cost, post_tax_cost, vat_int, start_str, end_str))
-
-def _calculate_single_year(cursor, year):
-    cursor.execute("""
-        SELECT SUM(tong_san_luong), SUM(thanh_tien), SUM(thanh_tien_sau_thue) 
-        FROM monthly_bill WHERE nam=?
-    """, (year,))
-    row_year = cursor.fetchone()
-    
-    cursor.execute("SELECT vat FROM monthly_bill WHERE nam=? ORDER BY thang DESC LIMIT 1", (year,))
-    vat_res = cursor.fetchone()
-    vat_year = vat_res[0] if vat_res else 8
-
-    if row_year:
-        cursor.execute("""
-            INSERT OR REPLACE INTO yearly_bill
-            (nam, tong_san_luong, tong_tien, tong_tien_sau_thue, vat)
-            VALUES (?, ?, ?, ?, ?)
-        """, (year, row_year[0] or 0, row_year[1] or 0, row_year[2] or 0, vat_year))
-
-def recalculate_total_usage(cursor):
-    cursor.execute("SELECT SUM(tong_san_luong), SUM(thanh_tien), SUM(thanh_tien_sau_thue) FROM monthly_bill")
-    row_total = cursor.fetchone()
-    
-    total_kwh = row_total[0] or 0.0
-    total_money = row_total[1] or 0
-    total_money_post_tax = row_total[2] or 0
-    
-    cursor.execute("SELECT COUNT(*) FROM monthly_bill")
-    total_months = cursor.fetchone()[0] or 0
-    
-    start_str = "N/A"
-    end_str = "N/A"
-    
-    cursor.execute("SELECT nam, thang, ngay FROM daily_usage ORDER BY nam ASC, thang ASC, ngay ASC LIMIT 1")
-    first = cursor.fetchone()
-    if first and all(x is not None for x in first): 
-        start_str = f"{first[2]:02d}/{first[1]:02d}/{first[0]}" 
-
-    cursor.execute("SELECT nam, thang, ngay FROM daily_usage ORDER BY nam DESC, thang DESC, ngay DESC LIMIT 1")
-    last = cursor.fetchone()
-    current_vat = 8
-    if last and all(x is not None for x in last): 
-        end_str = f"{last[2]:02d}/{last[1]:02d}/{last[0]}"
-        current_vat = int(get_vat_rate(last[0], last[1], last[2]) * 100)
-
-    cursor.execute("DELETE FROM total_usage")
-    cursor.execute("""
-        INSERT INTO total_usage 
-        (tong_san_luong, don_vi, tong_so_thang, thoi_diem_bat_dau, thoi_diem_ket_thuc, 
-         tong_tien_tich_luy, tong_tien_tich_luy_sau_thue, vat) 
-        VALUES (?, 'kWh', ?, ?, ?, ?, ?, ?)
-    """, (total_kwh, total_months, start_str, end_str, total_money, total_money_post_tax, current_vat))
-
-
-async def handle_override_global(hass: HomeAssistant, call: ServiceCall):
-    entry_id = call.data.get("entry_id")
-    if DOMAIN not in hass.data or entry_id not in hass.data[DOMAIN]: return
-
-    db_path = hass.data[DOMAIN][entry_id]["db_path"]
-    entry = hass.config_entries.async_get_entry(entry_id)
-    
-    billing_day = entry.options.get(CONF_BILLING_DAY, entry.data.get(CONF_BILLING_DAY, 1))
-    apply_date_str = entry.options.get(CONF_START_DATE_APPLY, entry.data.get(CONF_START_DATE_APPLY, "2024-01-01"))
-
-    raw_date = call.data.get("date")
-    val = call.data.get("value")
-    
-    if hasattr(raw_date, "date"): target_date = raw_date
-    else:
-        target_date = dt_util.parse_datetime(str(raw_date)) or dt_util.parse_date(str(raw_date))
-    
-    y, m, d = target_date.year, target_date.month, target_date.day
-    
-    def db_work_override():
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        perform_db_calculation(cursor, y, m, d, val, billing_day, apply_date_str)
-        conn.commit()
-        conn.close()
-
-    await hass.async_add_executor_job(db_work_override)
-    async_dispatcher_send(hass, f"{SIGNAL_UPDATE_SENSORS}_{entry_id}")
+            # YAML resource mode cannot be modified using the resource collection.
+            # HA global frontend fallback registers the card once at startup.
+            add_extra_js_url(hass, CARD_RESOURCE)
+            _LOGGER.debug("Registered card as frontend extra JS (Lovelace YAML mode)")
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, HomeAssistantError):
+        _LOGGER.exception("Automatic card registration failed. Add %s as JavaScript module under Dashboard resources", CARD_RESOURCE)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Được gọi khi Home Assistant khởi động để thiết lập các thành phần chung."""
-    
-    # 1. Đăng ký Web URL tĩnh cho UI Card
+    """Register the bundled frontend and service without per-entry I/O."""
     await hass.http.async_register_static_paths([
         StaticPathConfig(
-            UI_URL_BASE,
-            hass.config.path("custom_components", DOMAIN, UI_DIR_PATH),
-            False
+            "/electricity_consumption_ui",
+            str(Path(__file__).parent / "frontend"),
+            False,
         )
     ])
+    async def _override_service(call: ServiceCall) -> None:
+        await _handle_override(hass, call)
 
-    # 2. Đăng ký Service Ghi đè
-    async def override_service_handler(call: ServiceCall):
-        await handle_override_global(hass, call)
-    hass.services.async_register(DOMAIN, "override_data", override_service_handler, schema=SERVICE_OVERRIDE_SCHEMA)
-    
+    hass.services.async_register(
+        DOMAIN, "override_data", _override_service, schema=SERVICE_OVERRIDE_SCHEMA,
+    )
+    hass.async_create_background_task(
+        _register_card_resource(hass), f"{DOMAIN} register card", eager_start=False
+    )
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    # ---------------------------------------------------------
-    # AUTO CACHE BUSTING KẾT HỢP MANIFEST FALLBACK (Dành cho thẻ UI)
-    # ---------------------------------------------------------
-    integration = hass.data.get("integrations", {}).get(DOMAIN)
-    fallback_version = getattr(integration, "version", "1.0")
-    
-    def get_file_version(file_name, fallback):
-        try:
-            file_path = hass.config.path("custom_components", DOMAIN, UI_DIR_PATH, file_name)
-            return str(int(os.path.getmtime(file_path)))
-        except Exception as e:
-            _LOGGER.warning(f"Không thể đọc file {file_name} để tạo hacstag ({e}). Dùng version dự phòng: {fallback}")
-            return fallback
+async def _handle_override(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Validate and serialize manual historical daily readings."""
+    entry_id = call.data["entry_id"]
+    entry = hass.config_entries.async_get_entry(entry_id)
+    instance = hass.data.get(DOMAIN, {}).get(entry_id)
+    if entry is None or entry.domain != DOMAIN or instance is None:
+        raise HomeAssistantError(f"Electricity tracker entry not loaded: {entry_id}")
+    value = float(call.data["value"])
+    if not math.isfinite(value) or value < 0:
+        raise HomeAssistantError("Daily kWh must be a non-negative finite number")
+    raw_date = call.data["date"]
+    if isinstance(raw_date, str):
+        target_day = date.fromisoformat(raw_date[:10])
+    elif hasattr(raw_date, "date"):
+        target_day = raw_date.date()
+    else:
+        target_day = raw_date
+    if target_day > dt_util.now().date():
+        raise HomeAssistantError("Cannot override a future day")
+    billing_day, apply_date, _ = _entry_settings(entry)
+    changed = await instance["store"].async_write(target_day, value, billing_day, apply_date)
+    if changed:
+        if instance.get("manager"):
+            await instance["manager"].async_refresh()
+        _LOGGER.info("Manual override: entry=%s date=%s kWh=%.3f", entry_id, target_day, value)
+    else:
+        _LOGGER.debug("Manual override identical to existing reading: entry=%s date=%s", entry_id, target_day)
 
-    ver_card = await hass.async_add_executor_job(
-        get_file_version, "electricity-consumption-card.js", fallback_version
-    )
 
-    await init_resource(hass, f"{UI_URL_BASE}/electricity-consumption-card.js", ver_card)
-    # ---------------------------------------------------------
-
-    storage_dir = hass.config.path("electricity_consumption_tracker")
-    if not os.path.exists(storage_dir): os.makedirs(storage_dir, exist_ok=True)
-
-    db_path = os.path.join(storage_dir, f"electricity_data_{entry.entry_id}.db")
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"db_path": db_path}
-
-    device_registry = dr.async_get(hass)
-    device_registry.async_get_or_create(
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Set up one tracker; background data loads do not block HA startup."""
+    storage_dir = Path(hass.config.path("electricity_consumption_tracker"))
+    store = ElectricityStore(hass, storage_dir / f"electricity_data_{entry.entry_id}.db")
+    # Schema creation is a small executor job. Entity setup must not race schema creation.
+    await store.async_initialize()
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "store": store, "manager": None, "last_source_warning": None,
+    }
+    registry = dr.async_get(hass)
+    registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name=entry.data.get(CONF_FRIENDLY_NAME, "Electricity Tracker"),
         manufacturer="Khaisilk1910",
-        model="Electricity DB",
-        sw_version="2026.01.30",
+        model="Electricity Consumption Tracker",
+        sw_version=VERSION,
     )
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except Exception:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        raise
 
-    def init_db():
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS daily_usage (
-                nam INTEGER, thang INTEGER, ngay INTEGER, san_luong REAL, don_vi TEXT, PRIMARY KEY (nam, thang, ngay)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS monthly_bill (
-                nam INTEGER, thang INTEGER, tong_san_luong REAL, don_vi_san_luong TEXT, 
-                thanh_tien REAL, don_vi_tien TEXT, 
-                thanh_tien_sau_thue REAL, vat INTEGER,
-                ngay_bat_dau TEXT, ngay_ket_thuc TEXT,
-                PRIMARY KEY (nam, thang)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS yearly_bill (
-                nam INTEGER, tong_san_luong REAL, tong_tien REAL, 
-                tong_tien_sau_thue REAL, vat INTEGER,
-                PRIMARY KEY (nam)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS total_usage (
-                tong_san_luong REAL, don_vi TEXT, tong_so_thang INTEGER,
-                thoi_diem_bat_dau TEXT, thoi_diem_ket_thuc TEXT,
-                tong_tien_tich_luy REAL, tong_tien_tich_luy_sau_thue REAL, vat INTEGER
-            )
-        """)
-        
+    async def _read_source(now=None) -> None:
+        instance = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        if instance is None:
+            return
+        settings = {**entry.data, **entry.options}
+        entity_id = settings[CONF_SOURCE_SENSOR]
+        sensor = hass.states.get(entity_id)
+        warning = None
+        kwh = None
+        if sensor is None or sensor.state in ("unknown", "unavailable", "none", ""):
+            warning = f"Source sensor {entity_id} is unavailable; no data written"
+        else:
+            try:
+                kwh = float(sensor.state)
+                unit = (sensor.attributes.get("unit_of_measurement") or "kWh").strip()
+                if unit == "Wh":
+                    kwh /= 1000
+                elif unit != "kWh":
+                    warning = f"Source {entity_id} reports unit {unit!r}; expected daily kWh/Wh"
+                if kwh is None or not math.isfinite(kwh) or kwh < 0:
+                    warning = f"Source {entity_id} has non-finite or negative reading: {sensor.state!r}"
+            except (ValueError, TypeError, OverflowError):
+                warning = f"Source {entity_id} has non-numeric reading: {sensor.state!r}"
+        if warning:
+            if instance["last_source_warning"] != warning:
+                _LOGGER.warning("%s", warning)
+                instance["last_source_warning"] = warning
+            return
+        instance["last_source_warning"] = None
         try:
-            cursor.execute("PRAGMA table_info(monthly_bill)")
-            cols = [info[1] for info in cursor.fetchall()]
-            if "thanh_tien_sau_thue" not in cols:
-                cursor.execute("ALTER TABLE monthly_bill ADD COLUMN thanh_tien_sau_thue REAL DEFAULT 0")
-                cursor.execute("ALTER TABLE monthly_bill ADD COLUMN vat INTEGER DEFAULT 8")
-            if "ngay_bat_dau" not in cols:
-                cursor.execute("ALTER TABLE monthly_bill ADD COLUMN ngay_bat_dau TEXT")
-                cursor.execute("ALTER TABLE monthly_bill ADD COLUMN ngay_ket_thuc TEXT")
+            billing_day, apply_date, day_offset = _entry_settings(entry)
+            target_date = dt_util.now().date() - timedelta(days=day_offset)
+            changed = await store.async_write(target_date, kwh, billing_day, apply_date)
+            if changed:
+                _LOGGER.debug("Saved daily data: entry=%s source=%s date=%s kWh=%.3f", entry.entry_id, entity_id, target_date, kwh)
+                if instance.get("manager"):
+                    await instance["manager"].async_refresh()
+        except (OSError, ValueError, TypeError, sqlite3.Error):
+            _LOGGER.exception("Could not save daily source: entry=%s sensor=%s", entry.entry_id, entity_id)
 
-            cursor.execute("PRAGMA table_info(total_usage)")
-            cols_t = [info[1] for info in cursor.fetchall()]
-            if "tong_tien_tich_luy_sau_thue" not in cols_t:
-                cursor.execute("ALTER TABLE total_usage ADD COLUMN tong_tien_tich_luy_sau_thue REAL DEFAULT 0")
-                cursor.execute("ALTER TABLE total_usage ADD COLUMN thoi_diem_bat_dau TEXT")
-                cursor.execute("ALTER TABLE total_usage ADD COLUMN thoi_diem_ket_thuc TEXT")
-                cursor.execute("ALTER TABLE total_usage ADD COLUMN tong_tien_tich_luy REAL DEFAULT 0")
-                cursor.execute("ALTER TABLE total_usage ADD COLUMN vat INTEGER DEFAULT 8")
+    interval = int(entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, 1)))
+    entry.async_on_unload(async_track_time_interval(hass, _read_source, timedelta(hours=interval)))
+    entry.async_on_unload(async_track_time_change(hass, _read_source, hour=23, minute=59, second=55))
+
+    async def _load_initial_data() -> None:
+        try:
+            billing_day, apply_date, _ = _entry_settings(entry)
+            rebuilt = await store.async_rebuild_if_needed(billing_day, apply_date)
+            if rebuilt:
+                _LOGGER.info("Billing history synchronized for entry %s", entry.entry_id)
+            await _read_source()
+            instance = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+            if instance and instance.get("manager"):
+                await instance["manager"].async_refresh()
         except Exception:
-            pass
+            _LOGGER.exception("Initial tracker data load failed for entry %s", entry.entry_id)
 
-        conn.commit()
-        conn.close()
+    entry.async_create_background_task(
+        hass, _load_initial_data(), f"{DOMAIN} initial data", eager_start=False
+    )
+    _LOGGER.info("Tracker loaded: entry=%s source=%s interval=%sh", entry.entry_id,
+                 entry.options.get(CONF_SOURCE_SENSOR, entry.data.get(CONF_SOURCE_SENSOR)), interval)
+    return
 
-    await hass.async_add_executor_job(init_db)
 
-    async def update_data(now=None):
-        source_entity = entry.options.get(CONF_SOURCE_SENSOR, entry.data.get(CONF_SOURCE_SENSOR))
-        billing_day = entry.options.get(CONF_BILLING_DAY, entry.data.get(CONF_BILLING_DAY, 1))
-        apply_date_str = entry.options.get(CONF_START_DATE_APPLY, entry.data.get(CONF_START_DATE_APPLY, "2024-01-01"))
-
-        state = hass.states.get(source_entity)
-        if not state or state.state in ["unknown", "unavailable"]: return
-        try: current_kwh = float(state.state)
-        except ValueError: return
-
-        dt_now = dt_util.now()
-        y, m, d = dt_now.year, dt_now.month, dt_now.day
-
-        def db_work_update():
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            perform_db_calculation(cursor, y, m, d, current_kwh, billing_day, apply_date_str)
-            conn.commit()
-            conn.close()
-
-        await hass.async_add_executor_job(db_work_update)
-        async_dispatcher_send(hass, f"{SIGNAL_UPDATE_SENSORS}_{entry.entry_id}")
-
-    interval = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, 1))
-    entry.async_on_unload(async_track_time_interval(hass, update_data, timedelta(hours=interval)))
-    entry.async_on_unload(async_track_time_change(hass, update_data, hour=23, minute=59, second=55))
-
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
-    entry.async_on_unload(entry.add_update_listener(update_listener))
-    
-    hass.async_create_task(update_data())
-    
-    return True
-
-async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
-    db_path = hass.data[DOMAIN][entry.entry_id]["db_path"]
-    billing_day = entry.options.get(CONF_BILLING_DAY, entry.data.get(CONF_BILLING_DAY, 1))
-    apply_date_str = entry.options.get(CONF_START_DATE_APPLY, entry.data.get(CONF_START_DATE_APPLY, "2024-01-01"))
-
-    def recalculate_history_process():
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        apply_date = datetime.strptime(apply_date_str, "%Y-%m-%d").date()
-        
-        cursor.execute("""
-            SELECT nam, thang, ngay FROM daily_usage 
-            WHERE printf('%04d-%02d-%02d', nam, thang, ngay) >= ?
-            ORDER BY nam, thang, ngay ASC LIMIT 1
-        """, (apply_date_str,))
-        
-        first_impact = cursor.fetchone()
-        
-        if first_impact:
-            start_year_wipe = first_impact[0]
-            if first_impact[1] == 1 and billing_day > 1:
-                start_year_wipe -= 1
-            
-            cursor.execute("DELETE FROM monthly_bill WHERE nam >= ?", (start_year_wipe,))
-            cursor.execute("DELETE FROM yearly_bill WHERE nam >= ?", (start_year_wipe,))
-            
-            cursor.execute("""
-                SELECT nam, thang, ngay, san_luong 
-                FROM daily_usage 
-                WHERE nam >= ?
-                ORDER BY nam, thang, ngay
-            """, (start_year_wipe,))
-            
-            all_data = cursor.fetchall()
-            months_to_calc = set()
-            
-            for r in all_data:
-                d_obj = date(r[0], r[1], r[2])
-                b_y, b_m = get_billing_period(d_obj, billing_day, apply_date)
-                months_to_calc.add((b_y, b_m))
-            
-            sorted_months = sorted(list(months_to_calc))
-            for (b_y, b_m) in sorted_months:
-                _calculate_single_month(cursor, b_y, b_m, billing_day, apply_date)
-                
-            years_to_calc = set([m[0] for m in sorted_months])
-            for y_c in years_to_calc:
-                _calculate_single_year(cursor, y_c)
-            
-        recalculate_total_usage(cursor)
-        conn.commit()
-        conn.close()
-        async_dispatcher_send(hass, f"{SIGNAL_UPDATE_SENSORS}_{entry.entry_id}")
-
-    await hass.async_add_executor_job(recalculate_history_process)
-    await hass.config_entries.async_reload(entry.entry_id)
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    return await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Unload sensors, scheduled callbacks and entry-scoped background tasks."""
+    await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)
+    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)

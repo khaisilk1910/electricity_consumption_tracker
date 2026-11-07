@@ -1,7 +1,7 @@
 {
   "name": "Electricity Consumption Tracker",
-  "content_type": "integration",
-  "homeassistant": "2024.1.0",
-  "render_readme": true,
-  "country": ["VN"]
+  "homeassistant": "2026.11.0",
+  "country": [
+    "VN"
+  ]
 }

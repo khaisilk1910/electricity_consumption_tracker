@@ -1,0 +1,145 @@
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Thống kê theo tháng 2025
+  show_states: true
+  colorize_states: true
+graph_span: 1y
+span:
+  start: year
+  offset: "-1y"
+apex_config:
+  legend:
+    show: false
+    position: top
+  chart:
+    height: 250
+    stacked: false
+  plotOptions:
+    bar:
+      columnWidth: 65%
+      dataLabels:
+        position: top
+  xaxis:
+    type: datetime
+    format: MM
+    tooltip:
+      enabled: false
+  tooltip:
+    enabled: true
+    shared: true
+    intersect: false
+    x:
+      format: MM
+yaxis:
+  - id: kwh
+    show: true
+    decimals: 0
+    min: 0
+    apex_config:
+      labels:
+        show: true
+        style:
+          colors: "#164397"
+      forceNiceScale: true
+  - id: vnd
+    show: true
+    opposite: true
+    decimals: 0
+    min: 0
+    apex_config:
+      forceNiceScale: true
+      labels:
+        show: true
+        style:
+          colors: red
+        formatter: |
+          EVAL:function(val) {
+            if (val >= 1000000) return (val / 1000000).toFixed(1) + ' tr';
+            if (val >= 1000) return (val / 1000).toFixed(0) + ' k';
+            return val;
+          }
+  - id: hidden_scale
+    show: false
+    min: 0
+    max: 10000000000
+series:
+  - entity: sensor.tongou_tong_electricity_home_nam_2025
+    name: Sản lượng
+    type: column
+    unit: kWh
+    color: "#164397"
+    yaxis_id: kwh
+    float_precision: 1
+    show:
+      datalabels: false
+      extremas: false
+      legend_value: false
+      in_header: false
+    data_generator: |
+      const data = entity.attributes.chi_tiet_cac_thang;
+      if (!data) return [];
+
+      // Lấy năm từ tên entity (sẽ ra 2025)
+      const year = entity.entity_id.split('_').pop(); 
+
+      let chartData = [];
+      for (const [key, value] of Object.entries(data)) {
+        const month = parseInt(key.replace('Thang_', ''));
+        if (isNaN(month)) continue;
+        const date = new Date(year, month - 1, 1).getTime(); 
+        chartData.push([date, value.san_luong_kwh]);
+      }
+      return chartData.sort((a, b) => a[0] - b[0]);
+  - entity: sensor.tongou_tong_electricity_home_nam_2025
+    name: Tiền
+    type: column
+    unit: đ
+    color: "#d93025"
+    yaxis_id: vnd
+    float_precision: 0
+    show:
+      datalabels: false
+      extremas: true
+      legend_value: false
+      in_header: false
+    data_generator: |
+      const data = entity.attributes.chi_tiet_cac_thang;
+      if (!data) return [];
+      const year = entity.entity_id.split('_').pop();
+      let chartData = [];
+      for (const [key, value] of Object.entries(data)) {
+        const month = parseInt(key.replace('Thang_', ''));
+        if (isNaN(month)) continue;
+        const date = new Date(year, month - 1, 1).getTime();
+        let money = value.thanh_tien_vnd || 0;
+        chartData.push([date, money]);
+      }
+      return chartData.sort((a, b) => a[0] - b[0]);
+  - entity: sensor.tongou_tong_electricity_home_nam_2025
+    name: Tổng Sản lượng
+    color: "#164397"
+    unit: kWh
+    yaxis_id: hidden_scale
+    show:
+      in_chart: false
+      in_header: true
+    data_generator: |
+      // Lấy giá trị từ attribute
+      const val = parseFloat(entity.attributes.tong_san_luong_nam);
+      // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
+      return [[new Date().getTime(), val]];
+  - entity: sensor.tongou_tong_electricity_home_nam_2025
+    name: Tổng Tiền VAT
+    color: red
+    unit: đ
+    float_precision: 0
+    yaxis_id: hidden_scale
+    show:
+      in_chart: false
+      in_header: true
+    data_generator: |
+      // Lấy giá trị từ attribute
+      const val = parseFloat(entity.attributes.tong_tien_sau_thue);
+      // Trả về mảng chứa 1 điểm dữ liệu tại thời điểm hiện tại
+      return [[new Date().getTime(), val]];

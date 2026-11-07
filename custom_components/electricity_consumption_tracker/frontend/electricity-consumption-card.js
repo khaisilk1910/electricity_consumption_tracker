@@ -1,16 +1,16 @@
 /**
  * Electricity Consumption Card - Optimized for Home Assistant
- * @version 2.0.0
+ * @version 2.1.0
  * Improvements:
  *  - getCardSize() added for proper HA layout
  *  - Debounced hass setter to prevent excess renders
  *  - CSS cached outside render loop (no re-parse on every update)
- *  - Proper disconnectedCallback with full event listener cleanup
+ *  - Proper disconnectedCallback with timer cancellation; delegated listeners stay on card
  *  - Fixed hexToRgba overflow for large hex values
  *  - Removed recursive setTimeout polling → uses connectedCallback retry
  *  - Shadow DOM styles injected once, content updated separately
  *  - Defensive null checks throughout
- *  - Editor fires config-changed correctly on init
+ *  - Editor emits config-changed after user edits
  *  - Removed all inline `overflow: visible !important` hacks
  *  - Added keyboard navigation (ArrowLeft/Right on bar columns)
  *  - Tab-triggered CSS transitions instead of JS style mutations
@@ -45,8 +45,18 @@
   /** Simple debounce. */
   const debounce = (fn, ms) => {
     let t;
-    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+    const wrapped = (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+    wrapped.cancel = () => { clearTimeout(t); t = null; };
+    return wrapped;
   };
+
+  // The card and editor use innerHTML for chart markup: escape all user text.
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+
+  const safeColor = (color, fallback) =>
+    /^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/.test(String(color)) ? color : fallback;
 
   /* ─── SHARED CSS ───────────────────────────────────────────────────────── */
   // Built once and reused across all card instances.
@@ -87,12 +97,15 @@
     .header-tools { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
     .tabs-container { display: flex; background: rgba(0,0,0,0.1); padding: 4px; border-radius: 10px; gap: 4px; border: 1px solid rgba(0,0,0,0.05); }
     .tab-item {
+      border: 0; font-family: inherit; background: transparent;
       padding: clamp(4px,1vw,6px) clamp(8px,2vw,14px); border-radius: 8px;
       font-size: clamp(11px,3vw,13px); font-weight: 700;
       color: var(--text-main); opacity: 0.6; cursor: pointer;
       transition: all 0.25s; white-space: nowrap; user-select: none;
     }
     .tab-item:hover { opacity: 0.8; }
+    button:focus-visible, select:focus-visible, .bar-col:focus-visible { outline: 2px solid var(--primary-color,#03a9f4); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
     .tab-item.active { background: var(--block-bg); opacity: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 
     select.main-sel {
@@ -153,6 +166,7 @@
     select.styled-sel:hover { background-color: rgba(0,0,0,0.05); }
 
     .nav-btn {
+      border: 0; padding: 0; font-family: inherit;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       width: clamp(24px,6vw,28px); height: clamp(24px,6vw,28px);
       border-radius: 50%; color: #3b82f6; transition: all 0.2s; user-select: none;
@@ -374,11 +388,11 @@
           <div class="section-content">
             <div class="row-col">
               <span class="label">Tiêu đề thẻ (Tuỳ chọn)</span>
-              <input type="text" id="title-input" class="custom-input cfg" placeholder="VD: Thống kê Điện năng" value="${conf.title || ''}">
+              <input type="text" id="title-input" class="custom-input cfg" placeholder="VD: Thống kê Điện năng" value="${escapeHtml(conf.title || '')}">
             </div>
             <div class="row-col">
               <span class="label">Icon hoặc Emoji (Tuỳ chọn)</span>
-              <input type="text" id="icon-input" class="custom-input cfg" placeholder="VD: mdi:flash hoặc ⚡" value="${conf.icon || ''}">
+              <input type="text" id="icon-input" class="custom-input cfg" placeholder="VD: mdi:flash hoặc ⚡" value="${escapeHtml(conf.icon || '')}">
             </div>
             <div class="row-col">
               <span class="label">Sensor mặc định</span>
@@ -470,7 +484,7 @@
                 ${chartColorFields.map((f) => `
                   <div class="color-item">
                     <span class="color-label" title="${f.label}">${f.label}</span>
-                    <input type="color" class="color-picker cc" data-key="${f.id}" value="${conf[f.id] || f.default}">
+                    <input type="color" class="color-picker cc" data-key="${f.id}" value="${safeColor(conf[f.id], f.default)}">
                   </div>`).join('')}
               </div>
             </div>
@@ -568,7 +582,7 @@
                 name = this._hass.devices[ei.device_id].name_by_user || this._hass.devices[ei.device_id].name || name;
               } else if (ei.name) name = ei.name;
             }
-            return `<option value="${eid}" ${cur === eid ? 'selected' : ''}>${name.replace(' Total All Time', '').trim()}</option>`;
+            return `<option value="${escapeHtml(eid)}" ${cur === eid ? 'selected' : ''}>${escapeHtml(name.replace(' Total All Time', '').trim())}</option>`;
           }).join('');
         esel.value = cur;
       }
@@ -698,7 +712,10 @@
     }
 
     /** HA uses this to calculate dashboard column heights. */
-    getCardSize() { return 6; }
+    getCardSize() { return 9; }
+
+    // 2026 Sections dashboard: full width, automatic content height.
+    getGridOptions() { return { columns: 12, min_columns: 6 }; }
 
     constructor() {
       super();
@@ -728,7 +745,12 @@
     }
 
     setConfig(config) {
-      this.config = config || {};
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        throw new Error('Electricity Consumption Card: invalid configuration');
+      }
+      const configuredEntityChanged = this.config?.entity !== config.entity;
+      this.config = config;
+      if (configuredEntityChanged) this._currentEntityId = config.entity || null;
       // Always re-render shell (card element) on config change
       this._renderShell();
       if (this._hass) {
@@ -750,19 +772,15 @@
         return;
       }
       // Only debounce-trigger if relevant entity changed
-      if (!old || old.states[this._currentEntityId] !== hass.states[this._currentEntityId] ||
+      if (!old || old.states?.[this._currentEntityId] !== hass.states?.[this._currentEntityId] ||
           this._availableInstances.length === 0) {
         this._debouncedHassUpdate();
       }
     }
 
     _onHassUpdated() {
-      if (!this._currentEntityId || this._availableInstances.length === 0) {
-        this._scanForInstances();
-        if (this._availableInstances.length > 0) this._processData();
-      } else {
-        this._processData();
-      }
+      this._scanForInstances();
+      this._processData();
       this._updateView();
     }
 
@@ -847,6 +865,7 @@
     }
 
     connectedCallback() {
+      // Delegated handlers stay attached to the card element between dashboard views.
       // If card re-attached (e.g. after panel switch) and no instances found yet, retry
       if (this._initialized && this._availableInstances.length === 0 && this._hass) {
         this._scanForInstances();
@@ -857,10 +876,7 @@
 
     disconnectedCallback() {
       this._clearResetTimer();
-      if (this.card) {
-        if (this._boundClickHandler)  this.card.removeEventListener('click',  this._boundClickHandler);
-        if (this._boundChangeHandler) this.card.removeEventListener('change', this._boundChangeHandler);
-      }
+      this._debouncedHassUpdate.cancel();
     }
 
     _startResetTimer() {
@@ -884,7 +900,7 @@
 
     _scanForInstances() {
       if (!this._hass) return;
-      const states = this._hass.states;
+      const states = this._hass.states || {};
       const eids   = Object.keys(states).filter((e) => states[e]?.attributes?.chi_tiet_tung_nam !== undefined);
       this._availableInstances = eids.map((eid) => {
         let name = states[eid]?.attributes?.friendly_name || eid;
@@ -910,6 +926,23 @@
       }
     }
 
+    _getPeriodState(kind, year, month = null) {
+      const suffix = kind === 'year' ? `_bill_${year}` : `_bill_${year}_${String(month).padStart(2, '0')}`;
+      const conventional = kind === 'year'
+        ? `${this.baseSlug}_nam_${year}` : `${this.baseSlug}_thang_${month}_${year}`;
+      const existing = this._hass.states?.[conventional];
+      if (existing) return existing;
+      const entities = this._hass.entities || {};
+      const deviceId = entities[this._currentEntityId]?.device_id;
+      if (!deviceId) return null;
+      for (const [id, entity] of Object.entries(entities)) {
+        if (entity.device_id === deviceId && entity.unique_id?.endsWith(suffix) && this._hass.states[id]) {
+          return this._hass.states[id];
+        }
+      }
+      return null;
+    }
+
     _processData() {
       if (!this._hass || !this._currentEntityId) return;
       this.baseSlug = this._currentEntityId.replace('_total_all_time', '');
@@ -918,16 +951,18 @@
 
       this._yearsList = Object.keys(ts.attributes.chi_tiet_tung_nam)
         .map((y) => parseInt(y.replace('Nam_', ''), 10))
+        .filter(Number.isFinite)
         .sort((a, b) => b - a);
 
       if (this._selectedYear === null && this._yearsList.length > 0) this._selectedYear = this._yearsList[0];
       if (this._formYear     === null && this._yearsList.length > 0) this._formYear     = this._yearsList[0];
 
       if (this._selectedYear !== null) {
-        const ys = this._hass.states[`${this.baseSlug}_nam_${this._selectedYear}`];
+        const ys = this._getPeriodState('year', this._selectedYear);
         if (ys?.attributes?.chi_tiet_cac_thang) {
           this._monthsList = Object.keys(ys.attributes.chi_tiet_cac_thang)
             .map((m) => parseInt(m.replace('Thang_', ''), 10))
+            .filter(Number.isFinite)
             .sort((a, b) => b - a);
         } else {
           this._monthsList = Object.keys(this._hass.states)
@@ -935,35 +970,37 @@
             .map((e) => parseInt(e.split('_thang_')[1].split('_')[0], 10))
             .sort((a, b) => b - a);
         }
-        if (this._selectedMonth === null && this._monthsList.length > 0) this._selectedMonth = this._monthsList[0];
+        if (!this._monthsList.includes(this._selectedMonth)) this._selectedMonth = this._monthsList[0] ?? null;
       }
     }
 
     /* ── Resolve theme colors ─────────────────────────────────────────────── */
     _resolveColors() {
       const conf = this.config || {};
-      let cBlock = conf.blockBg   || '#ffffff';
-      let cText  = conf.textColor || '#1e3a8a';
-      let cRed   = conf.redText   || '#dc2626';
+      let cBlock = safeColor(conf.blockBg, '#ffffff');
+      let cText  = safeColor(conf.textColor, '#1e3a8a');
+      let cRed   = safeColor(conf.redText, '#dc2626');
       let cOptBg = '#ffffff';
-      let cBK1   = conf.barKwh1  || '#3b82f6';
-      let cBK2   = conf.barKwh2  || '#1e3a8a';
-      let cBV1   = conf.barVnd1  || '#10b981';
-      let cBV2   = conf.barVnd2  || '#047857';
-      let cLK    = conf.lineKwh  || '#ff3366';
-      let cLV    = conf.lineVnd  || '#ffcc00';
-      let cLM    = conf.lineMonth || '#ff3366';
+      let cBK1 = safeColor(conf.barKwh1, '#3b82f6');
+      let cBK2 = safeColor(conf.barKwh2, '#1e3a8a');
+      let cBV1 = safeColor(conf.barVnd1, '#10b981');
+      let cBV2 = safeColor(conf.barVnd2, '#047857');
+      let cLK    = safeColor(conf.lineKwh, '#ff3366');
+      let cLV    = safeColor(conf.lineVnd, '#ffcc00');
+      let cLM    = safeColor(conf.lineMonth, '#ff3366');
 
       const bgType    = conf.bg_type    || 'gradient';
-      const bgOpacity = conf.bg_opacity !== undefined ? conf.bg_opacity : 100;
+      const bgOpacity = Math.min(100, Math.max(0, Number(conf.bg_opacity ?? 100) || 0));
       let bgStr = '';
 
       if (bgType === 'gradient') {
-        const preset = conf.bg_gradient_preset || 'linear-gradient(135deg, #f0f4f8, #d9e2ec)';
+        const providedPreset = conf.bg_gradient_preset || 'linear-gradient(135deg, #f0f4f8, #d9e2ec)';
+        const preset = (providedPreset === 'custom' || /^linear-gradient\(\d{1,3}deg, (#[a-fA-F0-9]{3,6}|rgba?\([\d., ]+\)), (#[a-fA-F0-9]{3,6}|rgba?\([\d., ]+\))(, (#[a-fA-F0-9]{3,6}|rgba?\([\d., ]+\)))?\)$/.test(providedPreset))
+          ? providedPreset : 'linear-gradient(135deg, #f0f4f8, #d9e2ec)';
         if (preset === 'custom') {
-          const c1 = conf.bg_gradient_color1 || '#f0f4f8';
-          const c2 = conf.bg_gradient_color2 || '#d9e2ec';
-          const ang = conf.bg_gradient_angle !== undefined ? conf.bg_gradient_angle : 135;
+          const c1 = safeColor(conf.bg_gradient_color1, '#f0f4f8');
+          const c2 = safeColor(conf.bg_gradient_color2, '#d9e2ec');
+          const ang = Math.min(360, Math.max(0, Number(conf.bg_gradient_angle ?? 135) || 0));
           this.card.style.background = `linear-gradient(${ang}deg, ${hex2rgba(c1, bgOpacity)}, ${hex2rgba(c2, bgOpacity)})`;
           bgStr = `${c1} ${c2}`;
         } else {
@@ -971,7 +1008,7 @@
           bgStr = preset;
         }
       } else {
-        const bgColor = conf.bg_color || '#f0f4f8';
+        const bgColor = safeColor(conf.bg_color, '#f0f4f8');
         this.card.style.background = hex2rgba(bgColor, bgOpacity);
         bgStr = bgColor;
       }
@@ -979,9 +1016,9 @@
       /* Border */
       const borderEnabled = conf.border_enable !== undefined ? conf.border_enable : (conf.border_width > 0);
       if (borderEnabled) {
-        const bw = conf.border_width   !== undefined ? conf.border_width   : 0;
-        const bo = conf.border_opacity !== undefined ? conf.border_opacity : 0;
-        const bc = conf.border_color   || '#ffffff';
+        const bw = Math.min(20, Math.max(0, Number(conf.border_width) || 0));
+        const bo = Math.min(100, Math.max(0, Number(conf.border_opacity) || 0));
+        const bc = safeColor(conf.border_color, '#ffffff');
         this.card.style.border = (bw > 0 && bo > 0) ? `${bw}px solid ${hex2rgba(bc, bo)}` : 'none';
       } else {
         this.card.style.border = 'none';
@@ -990,11 +1027,11 @@
       /* Shadow */
       const shadowEnabled = conf.shadow_enable !== undefined ? conf.shadow_enable : true;
       if (shadowEnabled) {
-        const sc = conf.shadow_color   || '#000000';
-        const so = conf.shadow_opacity !== undefined ? conf.shadow_opacity : 10;
-        const sb = conf.shadow_blur    !== undefined ? conf.shadow_blur    : 20;
-        const sx = conf.shadow_offset_x !== undefined ? conf.shadow_offset_x : 0;
-        const sy = conf.shadow_offset_y !== undefined ? conf.shadow_offset_y : 8;
+        const sc = safeColor(conf.shadow_color, '#000000');
+        const so = Math.min(100, Math.max(0, Number(conf.shadow_opacity ?? 10) || 0));
+        const sb = Math.min(100, Math.max(0, Number(conf.shadow_blur ?? 20) || 0));
+        const sx = Math.min(100, Math.max(-100, Number(conf.shadow_offset_x) || 0));
+        const sy = Math.min(100, Math.max(-100, Number(conf.shadow_offset_y ?? 8) || 0));
         this.card.style.boxShadow = `${sx}px ${sy}px ${sb}px ${hex2rgba(sc, so)}`;
       } else {
         this.card.style.boxShadow = 'none';
@@ -1095,7 +1132,7 @@
     /* ── Chart builders ───────────────────────────────────────────────────── */
     _buildMonthChart(y, m, cols, isSearch = false) {
       const { cLM } = cols;
-      const ms = this._hass.states[`${this.baseSlug}_thang_${m}_${y}`];
+      const ms = this._getPeriodState('month', y, m);
       if (!ms) return `<div class="chart-section block-common" style="text-align:center;padding:20px">Không có dữ liệu tháng ${m}/${y}</div>`;
 
       const m_kwh   = ms.attributes.tong_san_luong_kwh      || 0;
@@ -1107,7 +1144,31 @@
       const daysInM = new Date(y, m, 0).getDate();
 
       let validDays = 0, maxDayVal = -1, minDayVal = Infinity, maxDayStr = '', minDayStr = '';
-      const fullData = Array.from({ length: daysInM }, (_, i) => {
+      const isoDetails = ms.attributes.chi_tiet_ngay_iso || null;
+      const cycle = String(ms.attributes.ky_hoa_don || '').split(' -> ');
+      const billingDates = isoDetails && /^\d{4}-\d{2}-\d{2}$/.test(cycle[0] || '') &&
+        /^\d{4}-\d{2}-\d{2}$/.test(cycle[1] || '') && cycle[0] <= cycle[1] ? (() => {
+          const dates = [];
+          const day = new Date(`${cycle[0]}T12:00:00Z`);
+          for (let n = 0; n < 32 && day.toISOString().slice(0, 10) <= cycle[1]; n++) {
+            dates.push(day.toISOString().slice(0, 10));
+            day.setUTCDate(day.getUTCDate() + 1);
+          }
+          return dates;
+        })() : [];
+      const todayIso = `${cy}-${String(cm).padStart(2,'0')}-${String(cd).padStart(2,'0')}`;
+      const fullData = billingDates.length && (cycle[0]?.slice(0, 7) !== cycle[1]?.slice(0, 7))
+        ? billingDates.map((iso) => {
+          const val = Number(isoDetails[iso] ?? 0) || 0;
+          const future = iso > todayIso;
+          if (!future && val > 0) {
+            validDays++;
+            if (val > maxDayVal) { maxDayVal = val; maxDayStr = iso.slice(8,10) + '/' + iso.slice(5,7); }
+            if (val < minDayVal) { minDayVal = val; minDayStr = iso.slice(8,10) + '/' + iso.slice(5,7); }
+          }
+          return { dayNum: Number(iso.slice(8,10)), dayStr: iso.slice(8,10) + '/' + iso.slice(5,7), val: future ? 0 : val, future, isToday: iso === todayIso };
+        })
+        : Array.from({ length: daysInM }, (_, i) => {
         const day = i + 1;
         const dayKey = day < 10 ? `0${day}` : `${day}`;
         const val = Number(daily[`Ngay_${dayKey}`] ?? daily[`Ngay_${day}`] ?? 0) || 0;
@@ -1117,7 +1178,7 @@
           if (val > maxDayVal) { maxDayVal = val; maxDayStr = String(day); }
           if (val < minDayVal) { minDayVal = val; minDayStr = String(day); }
         }
-        return { dayNum: day, dayStr: dayKey, val: future ? 0 : val, future };
+        return { dayNum: day, dayStr: dayKey, val: future ? 0 : val, future, isToday: y === cy && m === cm && day === cd };
       });
 
       const maxVal = Math.max(...fullData.filter((d) => !d.future).map((d) => d.val), 1);
@@ -1173,7 +1234,7 @@
           <div class="bar-chart">
             ${fullData.map((d) => {
               const h = (d.val / maxVal) * 100;
-              const isToday = (y === cy && m === cm && d.dayNum === cd);
+              const isToday = d.isToday;
               return `<div class="bar-col" tabindex="0">
                 ${!d.future ? `<div class="bar-val bar-val-daily">${fmtN(d.val)}</div><div class="bar" style="height:${h}%"></div>` : ''}
                 <div class="${isToday ? 'bar-label label-active' : 'bar-label'}">${d.dayStr}</div>
@@ -1186,7 +1247,7 @@
 
     _buildYearChart(y, cols, isSearch = false) {
       const { cLK, cLV } = cols;
-      const ys = this._hass.states[`${this.baseSlug}_nam_${y}`];
+      const ys = this._getPeriodState('year', y);
       if (!ys) return `<div class="chart-section block-common" style="text-align:center;padding:20px">Không có dữ liệu năm ${y}</div>`;
 
       const y_kwh   = ys.attributes.tong_san_luong_nam    || 0;
@@ -1204,7 +1265,7 @@
         let kwh = Number(obj.san_luong_kwh) || 0;
         let vnd = Number(obj.thanh_tien_sau_thue_vnd || obj.thanh_tien_vnd) || 0;
         if (!vnd) {
-          const ms = this._hass.states[`${this.baseSlug}_thang_${mon}_${y}`];
+          const ms = this._getPeriodState('month', y, mon);
           if (ms?.attributes) vnd = Number(ms.attributes.tong_tien_sau_thue || ms.attributes.tong_tien_truoc_thue) || 0;
         }
         const future = (y > cy) || (y === cy && mon > cm);
@@ -1300,7 +1361,7 @@
       return chunks.map((chunk) => {
         let totKwh = 0, totTruoc = 0, totSau = 0;
         const data = chunk.map((y) => {
-          const ys = this._hass.states[`${this.baseSlug}_nam_${y}`];
+          const ys = this._getPeriodState('year', y);
           const kwh    = ys?.attributes?.tong_san_luong_nam    || 0;
           const vnd    = ys?.attributes?.tong_tien_sau_thue    || 0;
           const truoc  = ys?.attributes?.tong_tien_truoc_thue  || 0;
@@ -1373,26 +1434,15 @@
 
       /* Loading state */
       if (this._availableInstances.length === 0) {
-        if (!this._loadStartTime) this._loadStartTime = Date.now();
-        if (Date.now() - this._loadStartTime > 20000) {
-          this.card.innerHTML = `<div class="error-box">
-            <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-            <div class="error-title">Chưa tìm thấy dữ liệu từ Tracker.</div>
-            <div class="error-sub">Vui lòng kiểm tra lại cấu hình sensor trong HA.</div>
-          </div>`;
-        } else {
-          this.card.innerHTML = `
-            <style>.ha-card-loader,.loader-spinner,.loader-text{}</style>
-            <div class="ha-card-loader">
-              <div class="loader-spinner"></div>
-              <div class="loader-text">Đang đồng bộ dữ liệu Điện năng...<br>Vui lòng chờ dữ liệu đang được nạp<br>Nếu báo lỗi hãy F5 lại trang hoặc đóng trình duyệt và mở lại</div>
-            </div>`;
-          // Retry via connectedCallback when HA pushes more state — no recursive setTimeout needed
-        }
-        this._lastHtml = '';
+        const missing = `<div class="error-box" role="status">
+          <ha-icon icon="mdi:information-outline"></ha-icon>
+          <div class="error-title">Chưa có sensor Electricity Consumption Tracker.</div>
+          <div class="error-sub">Hãy thêm tích hợp trong Cài đặt → Thiết bị & dịch vụ, sau đó chọn sensor theo ngày. Thẻ sẽ cập nhật tự động khi có dữ liệu.</div>
+        </div>`;
+        if (this._lastHtml !== missing) this.card.innerHTML = missing;
+        this._lastHtml = missing;
         return;
       }
-      this._loadStartTime = null;
       if (!this._currentEntityId) return;
 
       const ts = this._hass.states[this._currentEntityId];
@@ -1404,35 +1454,30 @@
       /* Update CSS variables on :host via a vars block only when colors change */
       const varStr = `--block-bg:${cBlock};--text-main:${cText};--bar-k1:${cBK1};--bar-k2:${cBK2};--bar-v1:${cBV1};--bar-v2:${cBV2};--text-red:${cRed};--option-bg:${cOptBg}`;
       if (this._lastVarStr !== varStr) {
-        const hostStyle = this.shadowRoot.querySelector('style');
-        if (hostStyle) {
-          // Patch the :host block without re-injecting the whole CSS
-          const patched = CARD_CSS.replace(
-            /--block-bg[^}]+/,
-            `--block-bg:${cBlock};--text-main:${cText};--bar-k1:${cBK1};--bar-k2:${cBK2};--bar-v1:${cBV1};--bar-v2:${cBV2};--text-red:${cRed};--option-bg:${cOptBg};`
-          );
-          hostStyle.textContent = patched;
-        }
+        const vars = { '--block-bg': cBlock, '--text-main': cText,
+          '--bar-k1': cBK1, '--bar-k2': cBK2, '--bar-v1': cBV1,
+          '--bar-v2': cBV2, '--text-red': cRed, '--option-bg': cOptBg };
+        for (const [name, value] of Object.entries(vars)) this.style.setProperty(name, value);
         this._lastVarStr = varStr;
       }
 
       const conf        = this.config || {};
-      const displayTitle = conf.title || 'Thống kê Điện năng';
-      const icon         = conf.icon  || 'mdi:transmission-tower';
-      const iconHtml     = icon.includes(':')
+      const displayTitle = escapeHtml(conf.title || 'Thống kê Điện năng');
+      const icon = String(conf.icon || 'mdi:transmission-tower');
+      const iconHtml = /^mdi:[a-z0-9-]+$/.test(icon)
         ? `<ha-icon icon="${icon}"></ha-icon>`
-        : `<span class="emoji-icon">${icon}</span>`;
+        : `<span class="emoji-icon">${escapeHtml(icon)}</span>`;
 
       let html = `
         <div class="main-card-header">${iconHtml} <span>${displayTitle}</span></div>
         <div class="header-tools">
-          <div class="tabs-container">
-            <div class="tab-item ${this._activeTab === 'overview' ? 'active' : ''}" data-tab="overview">Tổng quan</div>
-            <div class="tab-item ${this._activeTab === 'search'   ? 'active' : ''}" data-tab="search">Tra cứu</div>
+          <div class="tabs-container" role="tablist" aria-label="Chế độ hiển thị">
+            <button type="button" role="tab" aria-selected="${this._activeTab === 'overview'}" class="tab-item ${this._activeTab === 'overview' ? 'active' : ''}" data-tab="overview">Tổng quan</button>
+            <button type="button" role="tab" aria-selected="${this._activeTab === 'search'}" class="tab-item ${this._activeTab === 'search'   ? 'active' : ''}" data-tab="search">Tra cứu</button>
           </div>
           ${this._availableInstances.length > 1 ? `
             <select id="sel-instance" class="main-sel">
-              ${this._availableInstances.map((inst) => `<option value="${inst.id}" ${this._currentEntityId === inst.id ? 'selected' : ''}>${inst.name}</option>`).join('')}
+              ${this._availableInstances.map((inst) => `<option value="${escapeHtml(inst.id)}" ${this._currentEntityId === inst.id ? 'selected' : ''}>${escapeHtml(inst.name)}</option>`).join('')}
             </select>` : ''}
         </div>`;
 
@@ -1461,24 +1506,24 @@
 
           <div class="controls">
             <div class="control-pill block-common">
-              <div class="nav-btn btn-y-prev" title="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+              <button type="button" class="nav-btn btn-y-prev" title="Năm trước" aria-label="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
               <div class="control-content">
                 <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
                 <select id="sel-year" class="styled-sel">
                   ${this._yearsList.map((y) => `<option value="${y}" ${this._selectedYear === y ? 'selected' : ''}>${y}</option>`).join('')}
                 </select>
               </div>
-              <div class="nav-btn btn-y-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+              <button type="button" class="nav-btn btn-y-next" title="Năm sau" aria-label="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
             </div>
             <div class="control-pill block-common">
-              <div class="nav-btn btn-m-prev" title="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+              <button type="button" class="nav-btn btn-m-prev" title="Tháng trước" aria-label="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
               <div class="control-content">
                 <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
                 <select id="sel-month" class="styled-sel">
                   ${this._monthsList.map((m) => `<option value="${m}" ${this._selectedMonth === m ? 'selected' : ''}>T${m < 10 ? '0' + m : m}</option>`).join('')}
                 </select>
               </div>
-              <div class="nav-btn btn-m-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+              <button type="button" class="nav-btn btn-m-next" title="Tháng sau" aria-label="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
             </div>
           </div>`;
 
@@ -1491,17 +1536,17 @@
           <div class="search-bar-wrapper">
             <div class="search-inputs">
               <div class="control-pill block-common">
-                <div class="nav-btn btn-fy-prev" title="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+                <button type="button" class="nav-btn btn-fy-prev" title="Năm trước" aria-label="Năm trước"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
                 <div class="control-content">
                   <ha-icon icon="mdi:calendar-blank" class="ctrl-icon"></ha-icon>
                   <select id="form-year" class="styled-sel">
                     ${this._yearsList.map((y) => `<option value="${y}" ${this._formYear === y ? 'selected' : ''}>${y}</option>`).join('')}
                   </select>
                 </div>
-                <div class="nav-btn btn-fy-next" title="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+                <button type="button" class="nav-btn btn-fy-next" title="Năm sau" aria-label="Năm sau"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
               </div>
               <div class="control-pill block-common">
-                <div class="nav-btn btn-fm-prev" title="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></div>
+                <button type="button" class="nav-btn btn-fm-prev" title="Tháng trước" aria-label="Tháng trước"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
                 <div class="control-content">
                   <ha-icon icon="mdi:calendar-month" class="ctrl-icon"></ha-icon>
                   <select id="form-month" class="styled-sel">
@@ -1509,7 +1554,7 @@
                     ${[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => `<option value="${m}" ${this._formMonth == m ? 'selected' : ''}>T${m < 10 ? '0' + m : m}</option>`).join('')}
                   </select>
                 </div>
-                <div class="nav-btn btn-fm-next" title="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></div>
+                <button type="button" class="nav-btn btn-fm-next" title="Tháng sau" aria-label="Tháng sau"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
               </div>
             </div>
             <button id="btn-do-search" class="btn-search">
@@ -1557,8 +1602,10 @@
   }
 
   /* ── Register ──────────────────────────────────────────────────────────── */
-  customElements.define('electricity-consumption-editor', ElectricityConsumptionEditor);
-  customElements.define('electricity-consumption-card',   ElectricityConsumptionCard);
+  if (!customElements.get('electricity-consumption-editor'))
+    customElements.define('electricity-consumption-editor', ElectricityConsumptionEditor);
+  if (!customElements.get('electricity-consumption-card'))
+    customElements.define('electricity-consumption-card', ElectricityConsumptionCard);
 
   window.customCards = window.customCards || [];
   if (!window.customCards.some((c) => c.type === 'electricity-consumption-card')) {
@@ -1567,7 +1614,7 @@
       name:        'Thống kê Điện năng',
       description: 'Thẻ hiển thị thống kê tiêu thụ điện năng có hỗ trợ Nền Gradient & Tương phản tự động.',
       preview:     true,
-      version:     '2.0.0',
+      version:     '2.1.0',
     });
   }
 })();

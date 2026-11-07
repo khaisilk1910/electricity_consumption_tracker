@@ -1,317 +1,223 @@
-"""Sensor platform for Electricity Consumption Tracker."""
-import sqlite3
-import os
+"""Snapshot-based sensors: one SQLite read for all entities per refresh."""
+from __future__ import annotations
+
+from collections import defaultdict
+from datetime import date
 import logging
-from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorDeviceClass,
-    SensorStateClass,
-)
-from homeassistant.util import slugify
+
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from .const import DOMAIN, SIGNAL_UPDATE_SENSORS
+from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.util import slugify
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
-    db_path = hass.data[DOMAIN][entry.entry_id]["db_path"]
-    friendly_name = entry.data.get("friendly_name", "Electricity")
-    
-    manager = ElectricitySensorManager(hass, entry, async_add_entities, db_path, friendly_name)
-    await manager.async_create_total_sensor()
-    await manager.async_check_and_add_new_sensors()
 
-    entry.async_on_unload(
-        async_dispatcher_connect(
-            hass, 
-            f"{SIGNAL_UPDATE_SENSORS}_{entry.entry_id}", 
-            manager.async_check_and_add_new_sensors
-        )
-    )
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Create one manager per entry; defer database reads until after setup."""
+    instance = hass.data[DOMAIN][entry.entry_id]
+    manager = ConsumptionSensorManager(entry, async_add_entities, instance["store"])
+    instance["manager"] = manager
+    manager.add_total_sensor()
 
-class ElectricitySensorManager:
-    def __init__(self, hass, entry, async_add_entities, db_path, friendly_name):
-        self.hass = hass
-        self.entry_id = entry.entry_id
-        self.async_add_entities = async_add_entities
-        self.db_path = db_path
-        self.friendly_name = friendly_name
-        self.existing_years = set()
-        self.existing_months = set() 
-        self.total_sensor_created = False
 
-    async def async_create_total_sensor(self):
-        if not self.total_sensor_created:
-            self.async_add_entities([
-                ConsumptionTotalSensor(self.db_path, f"{self.friendly_name} Total All Time", self.entry_id)
-            ])
-            self.total_sensor_created = True
+class ConsumptionSensorManager:
+    """Keep a consistent in-memory snapshot shared by all sensors."""
 
-    async def async_check_and_add_new_sensors(self):
-        if not os.path.exists(self.db_path): return
+    def __init__(self, entry: ConfigEntry, add_entities: AddEntitiesCallback, store) -> None:
+        self.entry = entry
+        self.add_entities = add_entities
+        self.store = store
+        self.friendly_name = entry.data.get("friendly_name", "Electricity")
+        self.ready = False
+        self.total = {}
+        self.years = {}
+        self.months = {}
+        self.daily = defaultdict(list)
+        self.entities = []
+        self.seen_years = set()
+        self.seen_months = set()
 
-        def get_existing_periods():
-            found_years = []
-            found_months = []
-            try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute("SELECT DISTINCT nam FROM monthly_bill ORDER BY nam DESC")
-                found_years = [r[0] for r in cursor.fetchall()]
-                cursor.execute("SELECT nam, thang FROM monthly_bill ORDER BY nam DESC, thang DESC")
-                found_months = [(r[0], r[1]) for r in cursor.fetchall()]
-                conn.close()
-            except Exception as e:
-                pass
-            return found_years, found_months
+    def add_total_sensor(self) -> None:
+        entity = ConsumptionTotalSensor(self)
+        self.entities.append(entity)
+        self.add_entities([entity])
 
-        years, months = await self.hass.async_add_executor_job(get_existing_periods)
+    async def async_refresh(self) -> None:
+        """Refresh all entity values using one executor job, not one per sensor."""
+        try:
+            snapshot = await self.store.async_snapshot()
+        except Exception:
+            _LOGGER.exception("Could not read tracker snapshot: %s", self.entry.entry_id)
+            return
+
+        self.total = snapshot["total"][0] if snapshot["total"] else {}
+        self.years = {r["nam"]: r for r in snapshot["yearly"]}
+        self.months = {(r["nam"], r["thang"]): r for r in snapshot["monthly"]}
+        daily = defaultdict(list)
+        for row in snapshot["daily"]:
+            day = date(row["nam"], row["thang"], row["ngay"]).isoformat()
+            daily[day[:7]].append((day, row["san_luong"]))
+        self.daily = daily
+        self.ready = True
+
         new_entities = []
-
-        for year in years:
-            if year not in self.existing_years:
-                name = f"{self.friendly_name} - Năm {year}"
-                new_entities.append(ConsumptionYearlySensor(self.db_path, name, year, self.entry_id))
-                self.existing_years.add(year)
-
-
-        for year, month in months:
-            if (year, month) not in self.existing_months:
-                # 1. Tên hiển thị (Giữ nguyên :02d để hiện Tháng 07/2025)
-                display_name = f"{self.friendly_name} - Tháng {month:02d}/{year}"
-                
-                # Khởi tạo Sensor
-                sensor = ConsumptionMonthlySensor(self.db_path, display_name, year, month, self.entry_id)
-                
-                # 2. ÉP CỨNG Entity ID (Dùng format không có số 0)
-                # Tạo chuỗi tên để slugify: "Tongou... Thang 7 2025"
-                id_name_str = f"{self.friendly_name} Thang {month} {year}"
-                
-                # Gán trực tiếp entity_id (kết quả sẽ là sensor.tongou_..._thang_7_2025)
-                sensor.entity_id = f"sensor.{slugify(id_name_str)}"
-                
-                new_entities.append(sensor)
-                self.existing_months.add((year, month))
-
+        for year in sorted(self.years, reverse=True):
+            if year not in self.seen_years:
+                new_entities.append(ConsumptionYearlySensor(self, year))
+                self.seen_years.add(year)
+        for year, month in sorted(self.months, reverse=True):
+            if (year, month) not in self.seen_months:
+                new_entities.append(ConsumptionMonthlySensor(self, year, month))
+                self.seen_months.add((year, month))
         if new_entities:
-            self.async_add_entities(new_entities)
+            self.entities.extend(new_entities)
+            self.add_entities(new_entities)
+            _LOGGER.debug("Created %d period sensors for %s", len(new_entities), self.entry.entry_id)
+
+        for entity in self.entities:
+            if entity.hass is not None and entity.entity_id is not None:
+                entity.async_write_ha_state()
 
 
 class ConsumptionBase(SensorEntity):
-    def __init__(self, db_path, name, entry_id):
-        self._db_path = db_path
+    """A non-polling sensor backed by the manager's in-memory snapshot."""
+
+    _attr_should_poll = False
+    _attr_has_entity_name = False
+
+    def __init__(self, manager: ConsumptionSensorManager, name: str, unique_suffix: str) -> None:
+        self.manager = manager
         self._attr_name = name
-        self._entry_id = entry_id
-        self._attr_has_entity_name = False 
-        self._attr_device_info = {"identifiers": {(DOMAIN, entry_id)}, "name": entry_id}
+        self._attr_unique_id = f"{manager.entry.entry_id}_{unique_suffix}"
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, manager.entry.entry_id)})
 
-    async def async_added_to_hass(self):
-        await super().async_added_to_hass()
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"{SIGNAL_UPDATE_SENSORS}_{self._entry_id}", self._async_force_update_callback)
-        )
+    @property
+    def available(self) -> bool:
+        return self.manager.ready
 
-    @callback
-    def _async_force_update_callback(self):
-        self.async_schedule_update_ha_state(True)
-
-    async def async_update(self):
-        if not os.path.exists(self._db_path): return
-        await self.hass.async_add_executor_job(self._update_data_sync)
-
-    def _update_data_sync(self):
-        raise NotImplementedError()
 
 class ConsumptionMonthlySensor(ConsumptionBase):
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
-    _attr_native_unit_of_measurement = "đ"
+    _attr_native_unit_of_measurement = "VND"
+    _attr_icon = "mdi:calendar-month"
 
-    def __init__(self, db_path, name, year, month, entry_id):
-        super().__init__(db_path, name, entry_id)
-        self._year = year
-        self._month = month
-        self._attr_unique_id = f"{entry_id}_bill_{year}_{month:02d}"
-        self._attr_icon = "mdi:calendar-month"
+    def __init__(self, manager: ConsumptionSensorManager, year: int, month: int) -> None:
+        super().__init__(manager, f"{manager.friendly_name} - Tháng {month:02d}/{year}", f"bill_{year}_{month:02d}")
+        self.year = year
+        self.month = month
+        # Existing monthly dashboard IDs use unpadded month numbers.
+        self.entity_id = f"sensor.{slugify(f'{manager.friendly_name} Thang {month} {year}')}"
 
-    def _update_data_sync(self):
-        try:
-            conn = sqlite3.connect(self._db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT thanh_tien, tong_san_luong, thanh_tien_sau_thue, vat, ngay_bat_dau, ngay_ket_thuc
-                FROM monthly_bill WHERE nam=? AND thang=?
-            """, (self._year, self._month))
-            res = cursor.fetchone()
-            
-            daily_rows = []
-            start_date_str = "N/A"
-            end_date_str = "N/A"
+    @property
+    def native_value(self) -> int | None:
+        row = self.manager.months.get((self.year, self.month))
+        return int(row.get("thanh_tien") or 0) if row else None
 
-            if res:
-                # [FIX] Handle trường hợp NULL nếu migration chưa kịp chạy
-                start_date_str = res[4] if res[4] else "N/A"
-                end_date_str = res[5] if res[5] else "N/A"
-                
-                if start_date_str != "N/A" and end_date_str != "N/A":
-                    cursor.execute(f"""
-                        SELECT ngay, san_luong 
-                        FROM daily_usage 
-                        WHERE printf('%04d-%02d-%02d', nam, thang, ngay) BETWEEN ? AND ?
-                        ORDER BY nam, thang, ngay ASC
-                    """, (start_date_str, end_date_str))
-                else:
-                    cursor.execute("SELECT ngay, san_luong FROM daily_usage WHERE nam=? AND thang=? ORDER BY ngay ASC", (self._year, self._month))
-                
-                daily_rows = cursor.fetchall()
+    @property
+    def extra_state_attributes(self) -> dict:
+        row = self.manager.months.get((self.year, self.month))
+        if not row:
+            return {}
+        start = row.get("ngay_bat_dau")
+        end = row.get("ngay_ket_thuc")
+        selected = []
+        if start and end:
+            # A billing cycle can cross calendar months.
+            selected = [(day, val) for days in self.manager.daily.values()
+                        for day, val in days if start <= day <= end]
+        selected.sort()
+        vat = row.get("vat") if row.get("vat") is not None else 8
+        return {
+            "tong_san_luong_kwh": round(row.get("tong_san_luong") or 0, 3),
+            "tong_tien_truoc_thue": int(row.get("thanh_tien") or 0),
+            "tong_tien_sau_thue": int(row.get("thanh_tien_sau_thue") or 0),
+            "vat_rate": f"{vat}%",
+            "ky_hoa_don": f"{start} -> {end}",
+            "chi_tiet_ngay": {f"Ngay_{int(day[-2:]):02d}": round(val, 3) for day, val in selected},
+            "chi_tiet_ngay_iso": {day: round(val, 3) for day, val in selected},
+            "data_source": "Monthly Detail",
+        }
 
-            conn.close()
-
-            if res:
-                pre_tax = int(res[0]) if res[0] else 0
-                vat_val = res[3] if res[3] is not None else 8
-                
-                db_post_tax = res[2]
-                if db_post_tax and db_post_tax > 0:
-                    post_tax = int(db_post_tax)
-                else:
-                    post_tax = int(pre_tax * (1 + vat_val / 100))
-                
-                self._attr_native_value = pre_tax
-                self._attr_extra_state_attributes = {
-                    "tong_san_luong_kwh": round(res[1], 2),
-                    "tong_tien_truoc_thue": pre_tax,
-                    "tong_tien_sau_thue": post_tax,
-                    "vat_rate": f"{vat_val}%",
-                    "ky_hoa_don": f"{start_date_str} -> {end_date_str}",
-                    "chi_tiet_ngay": {f"Ngay_{r[0]:02d}": round(r[1], 2) for r in daily_rows},
-                    "data_source": "Monthly Detail"
-                }
-            else:
-                self._attr_native_value = 0
-        except Exception as e:
-            _LOGGER.error(f"Update error month {self._month}/{self._year}: {e}")
 
 class ConsumptionYearlySensor(ConsumptionBase):
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
-    _attr_native_unit_of_measurement = "đ"
+    _attr_native_unit_of_measurement = "VND"
+    _attr_icon = "mdi:calendar-range"
 
-    def __init__(self, db_path, name, year, entry_id):
-        super().__init__(db_path, name, entry_id)
-        self._year = year
-        self._attr_unique_id = f"{entry_id}_bill_{year}"
-        self._attr_icon = "mdi:calendar-range"
+    def __init__(self, manager: ConsumptionSensorManager, year: int) -> None:
+        super().__init__(manager, f"{manager.friendly_name} - Năm {year}", f"bill_{year}")
+        self.year = year
 
-    def _update_data_sync(self):
-        try:
-            conn = sqlite3.connect(self._db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT tong_tien, tong_san_luong, tong_tien_sau_thue, vat 
-                FROM yearly_bill WHERE nam=?
-            """, (self._year,))
-            res = cursor.fetchone()
-            
-            cursor.execute("""
-                SELECT thang, tong_san_luong, thanh_tien, thanh_tien_sau_thue 
-                FROM monthly_bill WHERE nam=? ORDER BY thang ASC
-            """, (self._year,))
-            month_rows = cursor.fetchall()
-            conn.close()
-            
-            if res:
-                pre_tax = int(res[0]) if res[0] else 0
-                vat_val = res[3] if res[3] is not None else 8
+    @property
+    def native_value(self) -> int | None:
+        row = self.manager.years.get(self.year)
+        return int(row.get("tong_tien") or 0) if row else None
 
-                db_post_tax = res[2]
-                if db_post_tax and db_post_tax > 0:
-                    post_tax = int(db_post_tax)
-                else:
-                    post_tax = int(pre_tax * (1 + vat_val / 100))
-                
-                self._attr_native_value = pre_tax
-                self._attr_extra_state_attributes = {
-                    "tong_san_luong_nam": round(res[1], 2),
-                    "tong_tien_truoc_thue": pre_tax,
-                    "tong_tien_sau_thue": post_tax,
-                    "vat_rate": f"{vat_val}%",
-                    "chi_tiet_cac_thang": {
-                        f"Thang_{r[0]:02d}": {
-                            "san_luong_kwh": round(r[1], 2),
-                            "thanh_tien_vnd": int(r[2]),
-                            "thanh_tien_sau_thue_vnd": int(r[3]) if r[3] and r[3] > 0 else int(r[2] * (1 + vat_val/100))
-                        } for r in month_rows
-                    }
+    @property
+    def extra_state_attributes(self) -> dict:
+        row = self.manager.years.get(self.year)
+        if not row:
+            return {}
+        vat = row.get("vat") if row.get("vat") is not None else 8
+        return {
+            "tong_san_luong_nam": round(row.get("tong_san_luong") or 0, 3),
+            "tong_tien_truoc_thue": int(row.get("tong_tien") or 0),
+            "tong_tien_sau_thue": int(row.get("tong_tien_sau_thue") or 0),
+            "vat_rate": f"{vat}%",
+            "chi_tiet_cac_thang": {
+                f"Thang_{month:02d}": {
+                    "san_luong_kwh": round(bill.get("tong_san_luong") or 0, 3),
+                    "thanh_tien_vnd": int(bill.get("thanh_tien") or 0),
+                    "thanh_tien_sau_thue_vnd": int(bill.get("thanh_tien_sau_thue") or 0),
                 }
-            else:
-                self._attr_native_value = 0
-        except Exception as e:
-            _LOGGER.error(f"Update error year {self._year}: {e}")
+                for (year, month), bill in sorted(self.manager.months.items()) if year == self.year
+            },
+        }
+
 
 class ConsumptionTotalSensor(ConsumptionBase):
     _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    # Revisions to historical days can lower totals; TOTAL_INCREASING would
+    # create fictitious energy usage in long-term statistics after a correction.
+    _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = "kWh"
+    _attr_icon = "mdi:lightning-bolt"
 
-    def __init__(self, db_path, name, entry_id):
-        super().__init__(db_path, name, entry_id)
-        self._attr_unique_id = f"{entry_id}_total_all_time"
-        self._attr_icon = "mdi:lightning-bolt"
+    def __init__(self, manager: ConsumptionSensorManager) -> None:
+        super().__init__(manager, f"{manager.friendly_name} Total All Time", "total_all_time")
 
-    def _update_data_sync(self):
-        try:
-            conn = sqlite3.connect(self._db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT tong_san_luong, tong_so_thang, 
-                       thoi_diem_bat_dau, thoi_diem_ket_thuc, 
-                       tong_tien_tich_luy, tong_tien_tich_luy_sau_thue, vat 
-                FROM total_usage
-            """)
-            res = cursor.fetchone()
-            
-            cursor.execute("""
-                SELECT nam, tong_san_luong, tong_tien, tong_tien_sau_thue, vat
-                FROM yearly_bill ORDER BY nam DESC
-            """)
-            years_stats = cursor.fetchall()
-            conn.close()
-            
-            if res:
-                self._attr_native_value = round(res[0], 2)
-                
-                total_pre = int(res[4]) if res[4] else 0
-                db_total_post = res[5]
-                vat_val = res[6] if res[6] is not None else 8
+    @property
+    def native_value(self) -> float | None:
+        if not self.manager.ready:
+            return None
+        return round(self.manager.total.get("tong_san_luong") or 0, 3)
 
-                if db_total_post and db_total_post > 0:
-                    total_post = int(db_total_post)
-                else:
-                    total_post = int(total_pre * (1 + vat_val / 100))
-
-                self._attr_extra_state_attributes = {
-                    "tong_so_thang_du_lieu": res[1],
-                    "thoi_diem_bat_dau": res[2],
-                    "thoi_diem_ket_thuc": res[3],
-                    "tong_tien_tich_luy": total_pre,
-                    "tong_tien_tich_luy_sau_thue": total_post,
-                    "current_vat_ref": f"{vat_val}%",
-                    "chi_tiet_tung_nam": {
-                        f"Nam_{y[0]}": {
-                            "tong_san_luong_kwh": round(y[1], 2),
-                            "tong_tien_vnd": int(y[2]),
-                            "tong_tien_sau_thue_vnd": int(y[3]) if y[3] and y[3] > 0 else int(y[2] * (1 + (y[4] or 8)/100))
-                        } for y in years_stats
-                    }
+    @property
+    def extra_state_attributes(self) -> dict:
+        row = self.manager.total
+        if not row:
+            return {"chi_tiet_tung_nam": {}}
+        vat = row.get("vat") if row.get("vat") is not None else 8
+        return {
+            "tong_so_thang_du_lieu": row.get("tong_so_thang", 0),
+            "thoi_diem_bat_dau": row.get("thoi_diem_bat_dau", "N/A"),
+            "thoi_diem_ket_thuc": row.get("thoi_diem_ket_thuc", "N/A"),
+            "tong_tien_tich_luy": int(row.get("tong_tien_tich_luy") or 0),
+            "tong_tien_tich_luy_sau_thue": int(row.get("tong_tien_tich_luy_sau_thue") or 0),
+            "current_vat_ref": f"{vat}%",
+            "chi_tiet_tung_nam": {
+                f"Nam_{year}": {
+                    "tong_san_luong_kwh": round(bill.get("tong_san_luong") or 0, 3),
+                    "tong_tien_vnd": int(bill.get("tong_tien") or 0),
+                    "tong_tien_sau_thue_vnd": int(bill.get("tong_tien_sau_thue") or 0),
                 }
-            else:
-                self._attr_native_value = 0
-        except Exception as e:
-            _LOGGER.error(f"Update error total: {e}")
+                for year, bill in sorted(self.manager.years.items(), reverse=True)
+            },
+        }

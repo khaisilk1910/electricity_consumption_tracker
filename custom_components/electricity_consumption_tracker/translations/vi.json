@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Theo dõi tiêu thụ điện",
+        "description": "Chọn sensor sản lượng điện THEO NGÀY (kWh hoặc Wh). Không chọn chỉ số điện tích lũy hay công suất tức thời.",
+        "data": {
+          "friendly_name": "Tên bộ theo dõi",
+          "source_sensor": "Sensor sản lượng điện theo ngày",
+          "update_interval": "Chu kỳ lấy dữ liệu (giờ)",
+          "billing_day": "Ngày bắt đầu chu kỳ hóa đơn (1-28)",
+          "start_date_apply": "Ngày bắt đầu áp dụng chu kỳ tùy chỉnh",
+          "source_day_offset": "Ngày dữ liệu nguồn (0=hôm nay, 1=hôm qua)"
+        }
+      }
+    },
+    "error": {
+      "invalid_date": "Ngày áp dụng không hợp lệ (YYYY-MM-DD).",
+      "invalid_day": "Ngày chốt phải từ 1-28, độ lệch nguồn là 0 hoặc 1.",
+      "invalid_interval": "Chu kỳ lấy dữ liệu phải từ 1 đến 24 giờ."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cấu hình bộ theo dõi",
+        "description": "Lịch sử hóa đơn sẽ được tính lại trong nền khi thay đổi cấu hình chu kỳ.",
+        "data": {
+          "source_sensor": "Sensor sản lượng điện theo ngày",
+          "update_interval": "Chu kỳ lấy dữ liệu (giờ)",
+          "billing_day": "Ngày bắt đầu chu kỳ hóa đơn (1-28)",
+          "start_date_apply": "Ngày bắt đầu áp dụng chu kỳ tùy chỉnh",
+          "source_day_offset": "Ngày dữ liệu nguồn (0=hôm nay, 1=hôm qua)"
+        }
+      }
+    },
+    "error": {
+      "invalid_date": "Ngày áp dụng không hợp lệ (YYYY-MM-DD).",
+      "invalid_day": "Ngày chốt phải từ 1-28, độ lệch nguồn là 0 hoặc 1.",
+      "invalid_interval": "Chu kỳ lấy dữ liệu phải từ 1 đến 24 giờ."
+    }
+  }
+}
